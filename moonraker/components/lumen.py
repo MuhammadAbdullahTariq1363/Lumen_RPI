@@ -130,15 +130,25 @@ class Lumen:
     
     def _log_debug(self, msg: str, to_console: bool = True) -> None:
         """Log debug message (only if debug enabled).
-        
+
         Args:
             msg: Message to log
             to_console: If True and debug_console enabled, also send to Mainsail
+
+        Behavior:
+            debug: False   → No logging
+            debug: True    → Journal only (systemd/journalctl)
+            debug: console → Journal + Mainsail console
         """
-        if self.debug:
-            _logger.info(f"[LUMEN] {msg}")
-            if to_console and self.debug_console:
-                asyncio.create_task(self._console_log(msg))
+        if not self.debug:
+            return  # Debug disabled, no logging
+
+        # Always log to journal when debug enabled
+        _logger.info(f"[LUMEN] {msg}")
+
+        # Additionally send to Mainsail console if debug: console
+        if to_console and self.debug_console:
+            asyncio.create_task(self._console_log(msg))
     
     async def _console_log(self, msg: str) -> None:
         """Send message to Mainsail console via Klipper RESPOND."""
@@ -555,7 +565,19 @@ class Lumen:
                      end_color[1] * self.max_brightness, 
                      end_color[2] * self.max_brightness)
         
-        # Update effect state
+        # Apply immediate effects FIRST (before updating state)
+        # This ensures the driver shows the correct state immediately
+        if effect == "off":
+            await driver.set_off()
+        elif effect == "solid":
+            await driver.set_color(r, g, b)
+        elif effect in ("pulse", "heartbeat", "disco"):
+            await driver.set_color(r, g, b)
+        else:
+            await driver.set_color(r, g, b)
+
+        # Update effect state AFTER applying immediate effect
+        # This prevents race condition with animation loop
         state = self.effect_states.get(group_name)
         if state:
             state.effect = effect
@@ -576,20 +598,6 @@ class Lumen:
             # Direction (default to 'standard' if not set)
             group_cfg = self.led_groups.get(group_name, {})
             state.direction = group_cfg.get("direction", "standard")
-        
-        # Apply immediate effects
-        if effect == "off":
-            await driver.set_off()
-        elif effect == "solid":
-            await driver.set_color(r, g, b)
-        elif effect in ("thermal", "progress"):
-            # Don't block here - let animation loop handle it
-            # The loop will set LEDs on first iteration
-            pass
-        elif effect in ("pulse", "heartbeat", "disco"):
-            await driver.set_color(r, g, b)
-        else:
-            await driver.set_color(r, g, b)
     
     # ─────────────────────────────────────────────────────────────
     # Animation Loop

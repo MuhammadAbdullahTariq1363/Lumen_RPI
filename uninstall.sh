@@ -272,35 +272,81 @@ restore_pigpiod() {
 ##  Final Instructions
 #####################################################################
 
+remove_moonraker_conf() {
+    print_section "Moonraker Configuration Cleanup"
+
+    local MOONRAKER_CONF="${PRINTER_DATA}/config/moonraker.conf"
+
+    if [ ! -f "$MOONRAKER_CONF" ]; then
+        print_info "moonraker.conf not found, skipping..."
+        return
+    fi
+
+    # Check if LUMEN sections exist
+    if grep -q "^\[lumen\]" "$MOONRAKER_CONF" || grep -q "^\[update_manager lumen\]" "$MOONRAKER_CONF"; then
+        print_warning "Found LUMEN sections in moonraker.conf"
+        echo ""
+
+        if prompt_yes_no "Remove [lumen] and [update_manager lumen] sections automatically?" "y"; then
+            # Create backup
+            cp "$MOONRAKER_CONF" "${MOONRAKER_CONF}.backup"
+            print_info "Created backup: ${MOONRAKER_CONF}.backup"
+
+            # Remove [lumen] section and its contents
+            sed -i '/^\[lumen\]/,/^\[/ {
+                /^\[lumen\]/d
+                /^[^[]/ {
+                    /^$/!d
+                }
+            }' "$MOONRAKER_CONF"
+
+            # Remove [update_manager lumen] section and its contents
+            sed -i '/^\[update_manager lumen\]/,/^\[/ {
+                /^\[update_manager lumen\]/d
+                /^[^[]/ {
+                    /^$/!d
+                }
+            }' "$MOONRAKER_CONF"
+
+            # Clean up any trailing blank lines
+            sed -i '/^$/N;/^\n$/d' "$MOONRAKER_CONF"
+
+            print_success "LUMEN sections removed from moonraker.conf"
+        else
+            print_info "Skipping automatic removal"
+            echo ""
+            echo -e "${YELLOW}Manual cleanup required:${NC}"
+            echo ""
+            echo "Edit moonraker.conf and remove the following sections:"
+            echo "   - [lumen]"
+            echo "   - [update_manager lumen]"
+            echo ""
+            echo "   nano ${MOONRAKER_CONF}"
+            echo ""
+        fi
+    else
+        print_info "No LUMEN sections found in moonraker.conf"
+    fi
+}
+
 final_instructions() {
     print_section "Uninstallation Complete"
-    
+
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗"
     echo "║                   LUMEN has been removed                      ║"
     echo -e "╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    
-    echo -e "${YELLOW}Manual cleanup required:${NC}"
-    echo ""
-    echo "1. Edit moonraker.conf and remove the following sections:"
-    echo "   - [lumen]"
-    echo "   - [update_manager lumen]"
-    echo ""
-    echo "   nano ${PRINTER_DATA}/config/moonraker.conf"
-    echo ""
-    echo "2. Restart Moonraker:"
-    echo "   sudo systemctl restart moonraker"
-    echo ""
-    echo "3. Optionally remove the LUMEN repository:"
+
+    echo "Optionally remove the LUMEN repository:"
     echo "   rm -rf ~/lumen"
     echo ""
-    
+
     if prompt_yes_no "Restart Moonraker now?" "y"; then
         echo "Restarting Moonraker..."
         sudo systemctl restart moonraker
         print_success "Moonraker restarted"
     fi
-    
+
     echo ""
     echo -e "${GREEN}Thanks for trying LUMEN! 👋${NC}"
 }
@@ -324,6 +370,7 @@ main() {
     remove_proxy_service
     remove_component
     remove_configuration
+    remove_moonraker_conf
     restore_pigpiod
     final_instructions
 }
