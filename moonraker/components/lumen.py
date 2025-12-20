@@ -28,10 +28,11 @@ if str(_component_dir) not in sys.path:
 
 from lumen_lib import (
     RGB, get_color, list_colors,
-    EffectState, effect_pulse, effect_heartbeat, effect_disco, effect_thermal, effect_progress,
+    EffectState,
     LEDDriver, KlipperDriver, PWMDriver, create_driver,
     PrinterState, PrinterEvent, StateDetector,
 )
+from lumen_lib.effects import EFFECT_REGISTRY
 
 if TYPE_CHECKING:
     from confighelper import ConfigHelper
@@ -605,9 +606,10 @@ class Lumen:
     
     def _ensure_animation_loop(self) -> None:
         """Start/stop animation loop based on active effects."""
-        animated = {"pulse", "heartbeat", "disco", "thermal", "progress"}
-        has_animated = any(s.effect in animated for s in self.effect_states.values())
-        
+        # Check if any effect needs animation (not "off" or "solid")
+        static_effects = {"off", "solid"}
+        has_animated = any(s.effect not in static_effects for s in self.effect_states.values())
+
         if has_animated and not self._animation_running:
             self._animation_running = True
             self._animation_task = asyncio.create_task(self._animation_loop())
@@ -618,8 +620,6 @@ class Lumen:
     
     async def _animation_loop(self) -> None:
         """Background loop for animated effects."""
-        animated = {"pulse", "heartbeat", "disco", "thermal", "progress"}
-
         # Import driver types for isinstance checks
         from .lumen_lib.drivers import GPIODriver, ProxyDriver
 
@@ -632,7 +632,9 @@ class Lumen:
                 intervals = []
 
                 for group_name, state in self.effect_states.items():
-                    if state.effect not in animated:
+                    # Check if effect exists in registry
+                    effect_class = EFFECT_REGISTRY.get(state.effect)
+                    if not effect_class:
                         continue
 
                     driver = self.drivers.get(group_name)
@@ -651,67 +653,68 @@ class Lumen:
                     intervals.append(driver_interval)
 
                     try:
-                        if state.effect == "pulse":
-                            r, g, b = effect_pulse(state, now)
-                            await driver.set_color(r, g, b)
-                        elif state.effect == "heartbeat":
-                            r, g, b = effect_heartbeat(state, now)
-                            await driver.set_color(r, g, b)
-                        elif state.effect == "disco":
-                            led_count = driver.led_count if hasattr(driver, 'led_count') else 1
-                            colors, should_update = effect_disco(state, now, led_count)
-                            if should_update:
-                                state.last_update = now
-                                if hasattr(driver, 'set_leds'):
-                                    await driver.set_leds(colors)
-                        elif state.effect == "thermal":
-                            led_count = driver.led_count if hasattr(driver, 'led_count') else 1
-                            # Get temp based on source
-                            if state.temp_source == "bed":
-                                current_temp = self.printer_state.bed_temp
-                                target_temp = self.printer_state.bed_target
-                            elif state.temp_source == "chamber":
-                                # TODO: Add chamber temp tracking
-                                current_temp = 0.0
-                                target_temp = 0.0
-                            else:  # extruder
-                                current_temp = self.printer_state.extruder_temp
-                                target_temp = self.printer_state.extruder_target
-                            # Debug: log temps and computed fill percent
-                            try:
-                                if target_temp <= 0 or target_temp <= self.temp_floor:
-                                    fill_percent = 0.0
+                        # Get effect instance
+                        effect = effect_class()
+                        led_count = driver.led_count if hasattr(driver, 'led_count') else 1
+
+                        # Build state data for effects that need it
+                        state_data = None
+                        if effect.requires_state_data:
+                            state_data = {
+                                # Temps for thermal effect
+                                'bed_temp': self.printer_state.bed_temp,
+                                'bed_target': self.printer_state.bed_target,
+                                'extruder_temp': self.printer_state.extruder_temp,
+                                'extruder_target': self.printer_state.extruder_target,
+                                'chamber_temp': 0.0,  # TODO: Add chamber tracking
+                                'chamber_target': 0.0,
+                                'temp_floor': self.temp_floor,
+                                # Progress for progress effect
+                                'print_progress': self.printer_state.progress,
+                            }
+
+                            # Throttle thermal debug logging
+                            if state.effect == "thermal":
+                                current_temp = state_data.get(f'{state.temp_source}_temp', 0.0)
+                                target_temp = state_data.get(f'{state.temp_source}_target', 0.0)
+
+                                should_log = False
+                                if group_name in self._last_thermal_log:
+                                    last_time, last_current, last_target = self._last_thermal_log[group_name]
+                                    temp_changed = abs(current_temp - last_current) >= 1.0 or abs(target_temp - last_target) >= 1.0
+                                    time_elapsed = now - last_time >= 10.0
+                                    should_log = temp_changed or time_elapsed
                                 else:
-                                    temp_range = target_temp - self.temp_floor
-                                    temp_above_floor = current_temp - self.temp_floor
-                                    fill_percent = temp_above_floor / temp_range if temp_range != 0 else 0.0
-                            except Exception:
-                                fill_percent = 0.0
+                                    should_log = True
 
-                            # Throttle thermal debug logging - only log when temps change significantly
-                            should_log = False
-                            if group_name in self._last_thermal_log:
-                                last_time, last_current, last_target = self._last_thermal_log[group_name]
-                                # Log if temps changed by 1°C or every 10 seconds
-                                temp_changed = abs(current_temp - last_current) >= 1.0 or abs(target_temp - last_target) >= 1.0
-                                time_elapsed = now - last_time >= 10.0
-                                should_log = temp_changed or time_elapsed
+                                if should_log:
+                                    self._last_thermal_log[group_name] = (now, current_temp, target_temp)
+                                    self._log_debug(f"Thermal {group_name}: source={state.temp_source}, current={current_temp:.1f}, target={target_temp:.1f}, floor={self.temp_floor}")
+
+                        # Calculate effect colors
+                        colors, needs_update = effect.calculate(state, now, led_count, state_data)
+
+                        if not needs_update:
+                            continue
+
+                        # Update last_update time for effects that use it
+                        if state.effect in ("disco",):
+                            state.last_update = now
+
+                        # Apply colors to driver
+                        if len(colors) == 1:
+                            # Single color effect (pulse, heartbeat, solid, off)
+                            color = colors[0]
+                            if color is None:
+                                await driver.set_off()
                             else:
-                                should_log = True  # First log for this group
-
-                            if should_log:
-                                self._last_thermal_log[group_name] = (now, current_temp, target_temp)
-                                self._log_debug(f"Thermal {group_name}: source={state.temp_source}, current={current_temp:.1f}, target={target_temp:.1f}, floor={self.temp_floor}, fill={fill_percent:.3f}")
-
-                            colors = effect_thermal(state, current_temp, target_temp, self.temp_floor, led_count)
+                                r, g, b = color
+                                await driver.set_color(r, g, b)
+                        else:
+                            # Multi-LED effect (disco, thermal, progress)
                             if hasattr(driver, 'set_leds'):
                                 await driver.set_leds(colors)
-                        elif state.effect == "progress":
-                            led_count = driver.led_count if hasattr(driver, 'led_count') else 1
-                            progress = self.printer_state.progress
-                            colors = effect_progress(state, progress, led_count)
-                            if hasattr(driver, 'set_leds'):
-                                await driver.set_leds(colors)
+
                     except Exception as e:
                         self._log_error(f"Animation error in {group_name}: {e}")
 

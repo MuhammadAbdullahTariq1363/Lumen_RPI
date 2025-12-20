@@ -1,11 +1,11 @@
 """
 LUMEN State - Printer state detection
 
-Monitors Klipper objects and detects printer events.
+Monitors Klipper objects and detects printer events using modular state detectors.
 """
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
@@ -119,9 +119,16 @@ EventCallback = Callable[[PrinterEvent], None]
 
 class StateDetector:
     """
-    Detects printer events from state changes.
+    Modular state detector using pluggable state detector modules.
+
+    Each state is a separate module in lumen_lib/states/ directory.
+
+    Adding new states:
+        1. Create detector in lumen_lib/states/my_state.py
+        2. Add to STATE_REGISTRY in lumen_lib/states/__init__.py
+        3. Add to STATE_PRIORITY list
     """
-    
+
     def __init__(
         self,
         temp_floor: float = 25.0,
@@ -131,18 +138,29 @@ class StateDetector:
         self.temp_floor = temp_floor
         self.bored_timeout = bored_timeout
         self.sleep_timeout = sleep_timeout
-        
+
         self._current_event = PrinterEvent.IDLE
         self._previous_event = PrinterEvent.IDLE
         self._listeners: List[EventCallback] = []
-        
+
+        # State timing tracking
+        self._state_enter_time: float = time.time()
         self._idle_start: Optional[float] = time.time()
         self._bored_start: Optional[float] = None
-    
+
+        # Load modular state detectors
+        from .states import STATE_REGISTRY, STATE_PRIORITY
+        self._detector_registry = STATE_REGISTRY
+        self._detector_priority = STATE_PRIORITY
+        self._detectors = {
+            name: detector_class()
+            for name, detector_class in STATE_REGISTRY.items()
+        }
+
     def add_listener(self, callback: EventCallback) -> None:
         """Register a callback for event changes."""
         self._listeners.append(callback)
-    
+
     def update(self, state: PrinterState) -> Optional[PrinterEvent]:
         """
         Evaluate state and detect event changes.
@@ -150,65 +168,65 @@ class StateDetector:
         """
         now = time.time()
         new_event = self._detect_event(state, now)
-        
+
         if new_event != self._current_event:
             self._transition(new_event, now)
             return new_event
-        
+
         return None
-    
+
     def _detect_event(self, state: PrinterState, now: float) -> PrinterEvent:
-        """Determine current event from printer state."""
-        
-        # Error state takes priority
-        if state.klipper_state in ("shutdown", "error"):
-            return PrinterEvent.ERROR
-        
-        # Printing - with hysteresis to prevent flapping
-        if state.print_state == "printing":
-            # If already printing, stay printing unless we're clearly heating
-            # (more than 10°C below target = genuinely heating up)
-            if self._current_event == PrinterEvent.PRINTING:
-                if state.clearly_heating(threshold=10.0):
-                    return PrinterEvent.HEATING
-                return PrinterEvent.PRINTING
-            
-            # Not yet in printing state - enter printing once at temp
-            if state.is_heating and not state.at_temp():
-                return PrinterEvent.HEATING
-            return PrinterEvent.PRINTING
-        
-        # Heating (not printing)
-        if state.is_heating:
-            return PrinterEvent.HEATING
-        
-        # Cooldown
-        if state.is_hot and not state.is_heating:
-            return PrinterEvent.COOLDOWN
-        
-        # Idle timers
-        if self._idle_start:
-            idle_seconds = now - self._idle_start
-            
-            if self._bored_start:
-                bored_seconds = now - self._bored_start
-                if bored_seconds >= self.sleep_timeout:
-                    return PrinterEvent.SLEEP
-            
-            if idle_seconds >= self.bored_timeout:
-                if not self._bored_start:
-                    self._bored_start = now
-                return PrinterEvent.BORED
-        
+        """Detect event using modular detector system."""
+
+        # Build status dict from PrinterState for modular detectors
+        status = {
+            'webhooks': {'state': state.klipper_state},
+            'print_stats': {
+                'state': state.print_state,
+                'filename': state.filename,
+            },
+            'display_status': {'progress': state.progress},
+            'heater_bed': {
+                'temperature': state.bed_temp,
+                'target': state.bed_target,
+            },
+            'extruder': {
+                'temperature': state.extruder_temp,
+                'target': state.extruder_target,
+            },
+            'toolhead': {
+                'position': [state.position_x, state.position_y, state.position_z],
+            },
+            'idle_timeout': {'state': state.idle_state},
+        }
+
+        # Build context for time-based detectors
+        context = {
+            'temp_floor': self.temp_floor,
+            'bored_timeout': self.bored_timeout,
+            'sleep_timeout': self.sleep_timeout,
+            'last_state': self._current_event.value,
+            'state_enter_time': self._state_enter_time,
+            'current_time': now,
+        }
+
+        # Check detectors in priority order (error first, idle last)
+        for state_name in self._detector_priority:
+            detector = self._detectors.get(state_name)
+            if detector and detector.detect(status, context):
+                return PrinterEvent(state_name)
+
+        # Fallback to idle if no detector matched
         return PrinterEvent.IDLE
-    
+
     def _transition(self, new_event: PrinterEvent, now: float) -> None:
         """Handle event transition."""
         self._previous_event = self._current_event
         self._current_event = new_event
-        
+        self._state_enter_time = now
+
         # Reset timers based on new state
-        if new_event in (PrinterEvent.HEATING, PrinterEvent.PRINTING, 
+        if new_event in (PrinterEvent.HEATING, PrinterEvent.PRINTING,
                          PrinterEvent.COOLDOWN, PrinterEvent.ERROR):
             self._idle_start = None
             self._bored_start = None
@@ -217,28 +235,29 @@ class StateDetector:
             self._bored_start = None
         elif new_event == PrinterEvent.BORED:
             self._bored_start = now
-        
+
         # Notify listeners
         for callback in self._listeners:
             try:
                 callback(new_event)
             except Exception:
                 pass
-    
+
     @property
     def current_event(self) -> PrinterEvent:
         return self._current_event
-    
+
     def force_event(self, event: PrinterEvent) -> None:
         """Force a specific event (for testing)."""
         self._transition(event, time.time())
-    
+
     def status(self) -> Dict[str, Any]:
         """Return current detector status."""
         now = time.time()
         return {
             "current_event": self._current_event.value,
             "previous_event": self._previous_event.value,
+            "detectors_loaded": list(self._detectors.keys()),
             "idle_seconds": (now - self._idle_start) if self._idle_start else 0,
             "bored_seconds": (now - self._bored_start) if self._bored_start else 0,
             "bored_timeout": self.bored_timeout,

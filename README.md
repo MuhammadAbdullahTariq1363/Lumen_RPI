@@ -468,10 +468,10 @@ MIT License - See [LICENSE](LICENSE) file
 
 ## Credits
 
-Inspired by [Aurora Lights](https://github.com/nlef/aurora-klipper) by nlef.
+Inspired by [Aurora Lights](https://github.com/MakesBadDecisions/Aurora)
 
 Built for real-time performance and smooth animations without macro limitations.
 
 ---
 
-**Made with ☕ and determination to never type `AURORA_WAKE` again.**
+**Made with insomnia and determination to never type `AURORA_WAKE` again.**
