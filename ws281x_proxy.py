@@ -24,10 +24,18 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from threading import Lock
+from threading import Lock, Thread
+import time
 
 from rpi_ws281x import PixelStrip, Color, ws
 import traceback
+
+# Systemd watchdog support (optional)
+try:
+    import systemd.daemon
+    SYSTEMD_AVAILABLE = True
+except ImportError:
+    SYSTEMD_AVAILABLE = False
 
 _logger = logging.getLogger(__name__)
 _logging_handler = logging.StreamHandler()
@@ -332,6 +340,25 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 
+def watchdog_thread():
+    """Notify systemd watchdog that service is alive."""
+    if not SYSTEMD_AVAILABLE:
+        return
+
+    interval = systemd.daemon.watchdog_enabled()
+    if not interval:
+        _logger.info("Systemd watchdog not enabled")
+        return
+
+    # Ping watchdog at half the interval (safety margin)
+    ping_interval = interval / 2000000.0  # Convert microseconds to seconds, then divide by 2
+    _logger.info(f"Systemd watchdog enabled, pinging every {ping_interval:.1f}s")
+
+    while True:
+        time.sleep(ping_interval)
+        systemd.daemon.notify("WATCHDOG=1")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--port', type=int, default=3769)
@@ -344,6 +371,15 @@ def main():
     _logger.info(f"Starting ws281x proxy on {args.host}:{args.port}")
     _logger.info(f"Python: {sys.executable} script: {Path(__file__).resolve()} pid: {os.getpid()}")
     httpd = ThreadingHTTPServer(server_address, Handler)
+
+    # Start watchdog thread if systemd available
+    if SYSTEMD_AVAILABLE:
+        watchdog_t = Thread(target=watchdog_thread, daemon=True)
+        watchdog_t.start()
+        # Notify systemd that we're ready
+        systemd.daemon.notify("READY=1")
+    else:
+        _logger.info("Systemd not available (systemd.daemon module not installed)")
 
     # Pre-initialize strips based on lumen.cfg if provided
     if args.lumen_cfg:
@@ -363,6 +399,8 @@ def main():
         _logger.info('Stopping ws281x proxy')
     finally:
         httpd.server_close()
+        if SYSTEMD_AVAILABLE:
+            systemd.daemon.notify("STOPPING=1")
 
 
 if __name__ == '__main__':

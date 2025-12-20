@@ -4,6 +4,12 @@
 
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
+[![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
+[![Version](https://img.shields.io/badge/version-v1.0.0-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+> **v1.0.0 Stable Release** - Production tested on Voron Trident with full state cycle validation (fresh install → heating → printing → cooldown → idle → bored → sleep → rewake cycle)
+
 ---
 
 ## Features
@@ -430,12 +436,18 @@ on_sleep: 0.0
 
 ```bash
 cd ~/lumen
+chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
-Then manually remove from `moonraker.conf`:
-- `[lumen]` section
-- `[update_manager lumen]` section
+The uninstaller will:
+1. Stop and remove ws281x-proxy service
+2. Remove Moonraker component symlinks
+3. Optionally remove lumen.cfg (asks first)
+4. Automatically remove moonraker.conf sections (creates backup)
+5. Optionally restore pigpiod service
+6. Optionally remove ~/lumen directory (asks first)
+7. Optionally restart Moonraker
 
 ---
 

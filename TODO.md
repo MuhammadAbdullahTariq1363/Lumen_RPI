@@ -4,7 +4,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## ✅ v0.1.0 Complete (December 2025)
+## ✅ v1.0.0 Stable Release (December 2025)
 
 ### Core Features
 - [x] Real-time state detection (idle, heating, printing, cooldown, error, bored, sleep)
@@ -21,7 +21,7 @@ Active development tasks and future enhancements for LUMEN.
 - [x] Shutdown cleanup handler (turns off LEDs gracefully)
 - [x] Motion report subscription for position tracking
 
-### Bug Fixes (December 19, 2025)
+### Bug Fixes (December 19-20, 2025)
 - [x] Fixed install.sh proxy path (line 342)
 - [x] Fixed race condition in ws281x_proxy.py (global _strip_locks_lock)
 - [x] Fixed GPIO driver strip expansion (properly recreates PixelStrip)
@@ -30,10 +30,16 @@ Active development tasks and future enhancements for LUMEN.
 - [x] Verified gpio_fps setting actively used (line 634)
 - [x] Added thermal logging throttle (only on temp change ≥1°C or every 10s)
 - [x] Added motion_report to initial query (position available immediately)
+- [x] Fixed config parser not storing gpio_pin, proxy_host, proxy_port, color_order
+- [x] Fixed effect state race condition (apply immediate effects before updating state)
+- [x] Fixed debug logging modes (False/True/console now work correctly)
+- [x] Enhanced uninstaller to remove moonraker.conf sections automatically
+- [x] Enhanced uninstaller to optionally remove ~/lumen directory
+- [x] Added helpful debug mode comments to installer
 
 ---
 
-## 🎯 v0.2.0 - Additional Printer States
+## 🎯 v1.1.0 - Additional Printer States
 
 ### New States to Detect
 - [ ] **Paused** - Print paused by user or M600
@@ -49,7 +55,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎨 v0.3.0 - New Effects
+## 🎨 v1.2.0 - New Effects
 
 ### Planned Effects
 - [ ] **Rainbow** - Cycling rainbow pattern
@@ -66,7 +72,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 📊 v0.4.0 - Data Sources
+## 📊 v1.3.0 - Data Sources
 
 ### New Temperature Sources
 - [ ] **Chamber temperature** - Add to thermal effect
@@ -85,7 +91,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🔧 v0.5.0 - Quality of Life
+## 🔧 v1.4.0 - Quality of Life
 
 ### Configuration Enhancements
 - [ ] **Per-group FPS override** - Allow different update rates per group
@@ -107,7 +113,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎮 v0.6.0 - Fun Features
+## 🎮 v1.5.0 - Fun Features
 
 ### PONG Mode
 - [ ] **Interactive LED Pong game** - Play during long prints!
@@ -156,11 +162,12 @@ Active development tasks and future enhancements for LUMEN.
 
 ## 📅 Release Cycle
 
-- **Patch releases (v0.1.x)**: Bug fixes only, no new features
-- **Minor releases (v0.x.0)**: New features, backward compatible
-- **Major releases (vX.0.0)**: Breaking changes (config format, API changes)
+- **Patch releases (v1.0.x)**: Bug fixes only, no new features
+- **Minor releases (v1.x.0)**: New features, backward compatible
+- **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Next planned release:** v0.2.0 (Additional printer states) - Q1 2026
+**Current stable:** v1.0.0 (December 2025)
+**Next planned release:** v1.1.0 (Additional printer states) - Q1 2026
 
 ---
 
@@ -189,6 +196,6 @@ Random ideas not yet prioritized:
 
 ---
 
-**Last Updated:** December 19, 2025
-**Current Version:** 0.1.0
-**Status:** Production Ready
+**Last Updated:** December 20, 2025
+**Current Version:** 1.0.0
+**Status:** Stable - Production tested on Voron Trident (full state cycle validation)

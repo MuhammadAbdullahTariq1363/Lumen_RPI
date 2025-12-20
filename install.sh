@@ -115,38 +115,86 @@ check_command() {
 
 preflight_checks() {
     print_section "Pre-flight Checks"
-    
+
     local errors=0
-    
+    local warnings=0
+
     # Check if running as root (we don't want that)
     if [ "$EUID" -eq 0 ]; then
         print_error "Please do not run this script as root."
         print_info "The script will use sudo when needed."
         exit 1
     fi
-    
+
     # Check for required commands
     if check_command python3; then
         print_success "Python3 found: $(python3 --version)"
+
+        # Check Python version (need 3.7+)
+        PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+        PYTHON_MAJOR=$(python3 -c 'import sys; print(sys.version_info.major)')
+        PYTHON_MINOR=$(python3 -c 'import sys; print(sys.version_info.minor)')
+
+        if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 7 ]); then
+            print_error "Python 3.7+ required (found $PYTHON_VERSION)"
+            errors=$((errors + 1))
+        else
+            print_success "Python version $PYTHON_VERSION (compatible)"
+        fi
     else
         print_error "Python3 not found"
         errors=$((errors + 1))
     fi
-    
+
     if check_command systemctl; then
         print_success "systemctl found"
     else
         print_error "systemctl not found (required for service management)"
         errors=$((errors + 1))
     fi
-    
+
     if check_command sudo; then
         print_success "sudo found"
     else
         print_error "sudo not found (required for service installation)"
         errors=$((errors + 1))
     fi
-    
+
+    # Check for Aurora (potential conflict)
+    if [ -d "${HOME}/aurora" ]; then
+        print_warning "Aurora installation detected at ~/aurora"
+        echo ""
+        echo "LUMEN and Aurora can conflict if both are enabled."
+        echo "You can:"
+        echo "  1. Keep both installed but only enable one in moonraker.conf"
+        echo "  2. Uninstall Aurora before continuing"
+        echo ""
+        if ! prompt_yes_no "Continue with LUMEN installation anyway?" "y"; then
+            print_info "Installation cancelled"
+            exit 0
+        fi
+        warnings=$((warnings + 1))
+    fi
+
+    # Check GPIO availability (if running on actual Pi hardware)
+    if [ -d "/sys/class/gpio" ]; then
+        print_success "GPIO hardware detected (Raspberry Pi)"
+
+        # Check if user is in gpio group
+        if groups | grep -q "gpio"; then
+            print_success "User is in 'gpio' group"
+        else
+            print_warning "User not in 'gpio' group (ws281x-proxy runs as root, so this is OK)"
+        fi
+    else
+        print_warning "GPIO hardware not detected (not a Raspberry Pi?)"
+        echo ""
+        echo "LUMEN GPIO driver requires Raspberry Pi hardware."
+        echo "You can still use Klipper or PWM drivers."
+        echo ""
+        warnings=$((warnings + 1))
+    fi
+
     # Check if LUMEN files exist
     if [ -f "${LUMEN_DIR}/moonraker/components/lumen.py" ]; then
         print_success "LUMEN component found"
@@ -366,7 +414,7 @@ setup_proxy_service() {
     sudo tee "$SERVICE_FILE" > /dev/null << EOF
 [Unit]
 Description=LUMEN WS281x Proxy
-Documentation=https://github.com/Lumen-RPI/lumen
+Documentation=https://github.com/MakesBadDecisions/Lumen_RPI
 After=network.target
 Before=moonraker.service
 
@@ -374,8 +422,15 @@ Before=moonraker.service
 Type=simple
 User=root
 ExecStart=${MOONRAKER_VENV}/bin/python ${PROXY_SCRIPT} --port ${PROXY_PORT} --lumen-cfg ${LUMEN_CFG}
-Restart=always
+
+# Automatic restart on failure
+Restart=on-failure
 RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Watchdog (restart if unresponsive for 30s)
+WatchdogSec=30
 
 # Security hardening (proxy only needs network and /dev/mem)
 ProtectSystem=strict
