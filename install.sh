@@ -498,15 +498,18 @@ setup_configuration() {
         echo ""
         echo -e "${GREEN}[lumen]"
         echo "config_path: ${PRINTER_DATA}/config/lumen.cfg"
-        echo "# debug: True              # Enable for troubleshooting"
-        echo -e "# debug: console          # Also log to Mainsail console${NC}"
+        echo "# debug: False             # No LUMEN debug output"
+        echo "# debug: True              # LUMEN logs to journalctl only"
+        echo -e "debug: console           # LUMEN logs to journalctl + Mainsail console${NC}"
         echo ""
         
         if prompt_yes_no "Add [lumen] section to moonraker.conf automatically?" "y"; then
             echo "" >> "$MOONRAKER_CONF"
             echo "[lumen]" >> "$MOONRAKER_CONF"
             echo "config_path: ${PRINTER_DATA}/config/lumen.cfg" >> "$MOONRAKER_CONF"
-            echo "# debug: True" >> "$MOONRAKER_CONF"
+            echo "# debug: False             # No LUMEN debug output" >> "$MOONRAKER_CONF"
+            echo "# debug: True              # LUMEN logs to journalctl only" >> "$MOONRAKER_CONF"
+            echo "debug: console           # LUMEN logs to journalctl + Mainsail console" >> "$MOONRAKER_CONF"
             print_success "[lumen] section added to moonraker.conf"
         fi
     fi
