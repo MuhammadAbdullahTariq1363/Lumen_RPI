@@ -345,14 +345,17 @@ def watchdog_thread():
     if not SYSTEMD_AVAILABLE:
         return
 
-    interval = systemd.daemon.watchdog_enabled()
-    if not interval:
+    # Get watchdog interval from environment variable (in microseconds)
+    import os
+    watchdog_usec = os.getenv('WATCHDOG_USEC')
+    if not watchdog_usec:
         _logger.info("Systemd watchdog not enabled")
         return
 
-    # Ping watchdog at half the interval (safety margin)
-    ping_interval = interval / 2000000.0  # Convert microseconds to seconds, then divide by 2
-    _logger.info(f"Systemd watchdog enabled, pinging every {ping_interval:.1f}s")
+    # Convert to seconds and use half interval for safety margin
+    interval_sec = int(watchdog_usec) / 1000000.0
+    ping_interval = interval_sec / 2.0
+    _logger.info(f"Systemd watchdog enabled, pinging every {ping_interval:.1f}s (interval: {interval_sec:.0f}s)")
 
     while True:
         time.sleep(ping_interval)
