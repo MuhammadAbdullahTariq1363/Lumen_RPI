@@ -28,6 +28,11 @@ update_rate: 0.1           # Seconds between effect updates (10 Hz)
 update_rate_printing: 5.0  # Slower during prints (Klipper queue busy)
 # GPIO driver (rpi_ws281x) - Pi CPU only, no Klipper impact
 gpio_fps: 60               # Frames per second (60 = smooth, 30 = Pi Zero safe)
+# Bed dimensions for KITT tracking mode
+bed_x_min: 0               # Minimum X position (mm)
+bed_x_max: 300             # Maximum X position (mm)
+bed_y_min: 0               # Minimum Y position (mm)
+bed_y_max: 300             # Maximum Y position (mm)
 
 
 #####################################################################
@@ -80,6 +85,23 @@ speed: 10.0                # Movement speed (LEDs per second)
 max_brightness: 1.0        # Brightness of comet head
 comet_tail_length: 10      # Length of trailing tail (in LEDs)
 comet_fade_rate: 0.5       # How quickly tail fades (0.0-1.0)
+
+[lumen_effect chase]
+speed: 15.0                # Movement speed (LEDs per second)
+chase_size: 5              # LEDs per segment
+chase_color_1: red         # First segment color
+chase_color_2: blue        # Second segment color
+chase_offset_base: 0.5     # Base distance between segments (0.0-1.0)
+chase_offset_variation: 0.1 # How much offset varies dynamically
+max_brightness: 1.0
+
+[lumen_effect kitt]
+speed: 1.0                 # Bounce speed (sweeps per second)
+base_color: red            # Scanner color (classic red!)
+kitt_eye_size: 3           # LEDs in bright center eye
+kitt_tail_length: 8        # Fading LEDs on each side
+kitt_tracking_axis: none   # "none" | "x" | "y" (for bed mesh tracking)
+max_brightness: 1.0
 
 
 # #####################################################################
@@ -191,9 +213,16 @@ comet_fade_rate: 0.5       # How quickly tail fades (0.0-1.0)
 ##    rainbow                   - Cycling rainbow animation
 ##    fire                      - Flickering flame simulation
 ##    comet <color>             - Moving light with trailing tail
+##    chase [group_num]         - Two segments chasing (multi-group capable)
+##    kitt                      - Knight Rider scanner with optional tracking
 ##    thermal <src> <c1> <c2> <curve>  - Temperature gradient
 ##    progress <c1> <c2> <curve>       - Print progress gradient
 ##    off                       - LEDs off
+##
+##  MULTI-GROUP EFFECTS:
+##    chase 1, chase 2, chase 3 - Groups coordinate seamlessly
+##    Example: Left strip "chase 1", Center "chase 2", Right "chase 3"
+##             Creates one continuous chase across all three strips
 ##
 ##  COLORS (50+ named colors available):
 ##    Use: curl http://localhost:7125/server/lumen/colors

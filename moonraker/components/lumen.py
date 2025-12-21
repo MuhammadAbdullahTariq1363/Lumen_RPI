@@ -67,6 +67,11 @@ class Lumen:
         self.update_rate = 0.1
         self.update_rate_printing = 1.0
         self.gpio_fps = 60
+        # Bed dimensions for KITT tracking
+        self.bed_x_min = 0.0
+        self.bed_x_max = 300.0
+        self.bed_y_min = 0.0
+        self.bed_y_max = 300.0
         
         # LED groups, drivers, effects
         self.led_groups: Dict[str, Dict[str, Any]] = {}
@@ -326,6 +331,11 @@ class Lumen:
                 self.update_rate = float(data.get("update_rate", self.update_rate))
                 self.update_rate_printing = float(data.get("update_rate_printing", self.update_rate_printing))
                 self.gpio_fps = int(data.get("gpio_fps", self.gpio_fps))
+                # Bed dimensions for KITT tracking
+                self.bed_x_min = float(data.get("bed_x_min", self.bed_x_min))
+                self.bed_x_max = float(data.get("bed_x_max", self.bed_x_max))
+                self.bed_y_min = float(data.get("bed_y_min", self.bed_y_min))
+                self.bed_y_max = float(data.get("bed_y_max", self.bed_y_max))
             
             elif section_type == "lumen_effect" and section_name:
                 self.effect_settings[section_name] = data.copy()
@@ -361,18 +371,27 @@ class Lumen:
     
     def _parse_effect_color(self, value: str) -> Dict[str, Any]:
         """Parse effect specification with optional inline parameters.
-        
+
         Formats:
             effect                           → basic effect
             effect color                     → effect with color
+            effect group_num                 → multi-group effect (chase 1, chase 2, etc.)
             thermal [source] start end [curve]  → thermal with params
             progress start end [curve]       → progress with params
-        
-        Returns dict with: effect, color, start_color, end_color, gradient_curve, temp_source
+            comet color                      → comet with color
+            kitt                             → kitt scanner
+
+        Returns dict with: effect, color, start_color, end_color, gradient_curve, temp_source, group_num
         """
         parts = value.strip().split()
-        result: Dict[str, Any] = {"effect": parts[0], "color": None}
-        
+        result: Dict[str, Any] = {"effect": parts[0], "color": None, "group_num": None}
+
+        # Check for multi-group numbering (chase 1, chase 2, etc.)
+        if len(parts) >= 2 and parts[1].isdigit():
+            result["group_num"] = int(parts[1])
+            # Remove group number from parts for further parsing
+            parts = [parts[0]] + parts[2:]
+
         if parts[0] == "thermal":
             # thermal [temp_source] [start_color] [end_color] [gradient_curve]
             idx = 1
@@ -566,12 +585,36 @@ class Lumen:
         max_bright = float(params.get("max_brightness", 0.8))
         min_sparkle = int(params.get("min_sparkle", 1))
         max_sparkle = int(params.get("max_sparkle", 6))
-        
+
         # Thermal/Progress fill params - inline overrides [lumen_effect] defaults
         start_color_name = mapping.get("start_color") or params.get("start_color", "steel")
         end_color_name = mapping.get("end_color") or params.get("end_color", "matrix")
         gradient_curve = mapping.get("gradient_curve") or float(params.get("gradient_curve", 2.0))
         temp_source = mapping.get("temp_source") or params.get("temp_source", "extruder")
+
+        # Rainbow params
+        rainbow_spread = float(params.get("rainbow_spread", 1.0))
+
+        # Fire params
+        fire_cooling = float(params.get("fire_cooling", 0.3))
+
+        # Comet params
+        comet_tail_length = int(params.get("comet_tail_length", 10))
+        comet_fade_rate = float(params.get("comet_fade_rate", 0.5))
+
+        # Chase params
+        chase_color_1_name = params.get("chase_color_1", "red")
+        chase_color_2_name = params.get("chase_color_2", "blue")
+        chase_color_1 = get_color(chase_color_1_name)
+        chase_color_2 = get_color(chase_color_2_name)
+        chase_size = int(params.get("chase_size", 5))
+        chase_offset_base = float(params.get("chase_offset_base", 0.5))
+        chase_offset_variation = float(params.get("chase_offset_variation", 0.1))
+
+        # KITT params
+        kitt_eye_size = int(params.get("kitt_eye_size", 3))
+        kitt_tail_length = int(params.get("kitt_tail_length", 8))
+        kitt_tracking_axis = params.get("kitt_tracking_axis", "none").lower()
         
         # Get actual RGB for start/end colors
         start_color = get_color(start_color_name)
@@ -620,6 +663,23 @@ class Lumen:
             state.end_color = end_color
             state.gradient_curve = float(gradient_curve)
             state.temp_source = temp_source
+            # Rainbow
+            state.rainbow_spread = rainbow_spread
+            # Fire
+            state.fire_cooling = fire_cooling
+            # Comet
+            state.comet_tail_length = comet_tail_length
+            state.comet_fade_rate = comet_fade_rate
+            # Chase
+            state.chase_color_1 = chase_color_1
+            state.chase_color_2 = chase_color_2
+            state.chase_size = chase_size
+            state.chase_offset_base = chase_offset_base
+            state.chase_offset_variation = chase_offset_variation
+            # KITT
+            state.kitt_eye_size = kitt_eye_size
+            state.kitt_tail_length = kitt_tail_length
+            state.kitt_tracking_axis = kitt_tracking_axis
             # Direction (default to 'standard' if not set)
             group_cfg = self.led_groups.get(group_name, {})
             state.direction = group_cfg.get("direction", "standard")
@@ -712,6 +772,15 @@ class Lumen:
                                 'temp_floor': self.temp_floor,
                                 # Progress for progress effect
                                 'print_progress': self.printer_state.progress,
+                                # Toolhead position for KITT tracking
+                                'toolhead_pos_x': self.printer_state.position_x,
+                                'toolhead_pos_y': self.printer_state.position_y,
+                                'toolhead_pos_z': self.printer_state.position_z,
+                                # Bed dimensions
+                                'bed_x_min': self.bed_x_min,
+                                'bed_x_max': self.bed_x_max,
+                                'bed_y_min': self.bed_y_min,
+                                'bed_y_max': self.bed_y_max,
                             }
 
                             # Throttle thermal debug logging

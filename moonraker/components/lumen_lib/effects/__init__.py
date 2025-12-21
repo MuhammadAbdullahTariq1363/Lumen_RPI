@@ -18,6 +18,8 @@ from .progress import ProgressEffect
 from .rainbow import RainbowEffect
 from .fire import FireEffect
 from .comet import CometEffect
+from .chase import ChaseEffect
+from .kitt import KITTEffect
 from .off import OffEffect
 
 # Base effect class
@@ -34,6 +36,8 @@ EFFECT_REGISTRY: Dict[str, Type[BaseEffect]] = {
     'rainbow': RainbowEffect,
     'fire': FireEffect,
     'comet': CometEffect,
+    'chase': ChaseEffect,
+    'kitt': KITTEffect,
     'off': OffEffect,
 }
 
@@ -80,5 +84,7 @@ __all__ = [
     'RainbowEffect',
     'FireEffect',
     'CometEffect',
+    'ChaseEffect',
+    'KITTEffect',
     'OffEffect',
 ]

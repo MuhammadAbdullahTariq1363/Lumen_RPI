@@ -28,6 +28,16 @@ class EffectState:
     # Comet-specific
     comet_tail_length: int = 10          # Length of trailing tail in LEDs
     comet_fade_rate: float = 0.5         # 0.0-1.0, how quickly tail fades (higher = shorter tail)
+    # Chase-specific
+    chase_color_1: RGB = (1.0, 0.0, 0.0) # First segment color (red)
+    chase_color_2: RGB = (0.0, 0.0, 1.0) # Second segment color (blue)
+    chase_size: int = 5                  # LEDs per segment
+    chase_offset_base: float = 0.5       # Base distance between segments (0.0-1.0)
+    chase_offset_variation: float = 0.1  # Offset variation amount (0.0-1.0)
+    # KITT-specific
+    kitt_eye_size: int = 3               # LEDs in bright center eye
+    kitt_tail_length: int = 8            # Fading LEDs on each side
+    kitt_tracking_axis: str = "none"     # "none" | "x" | "y"
     # Thermal/Progress fill effects
     start_color: RGB = (0.5, 0.5, 0.5)  # steel
     end_color: RGB = (0.0, 1.0, 0.0)    # green
