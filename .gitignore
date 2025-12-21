@@ -53,7 +53,7 @@ htmlcov/
 
 # User-specific config (don't commit actual lumen.cfg)
 lumen.cfg
-
+settings.local.json
 # Systemd service files with hardcoded paths
 *.service.local
 

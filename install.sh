@@ -342,15 +342,15 @@ handle_pigpiod() {
 
 install_rpi_ws281x() {
     print_section "Installing rpi-ws281x Library"
-    
+
     echo "rpi-ws281x is required for GPIO LED control."
     echo "This will be installed in the Moonraker virtual environment."
     echo ""
-    
+
     # Check if already installed
     if "${MOONRAKER_VENV}/bin/python" -c "import rpi_ws281x" 2>/dev/null; then
         print_success "rpi-ws281x already installed"
-        
+
         if prompt_yes_no "Reinstall/upgrade rpi-ws281x?" "n"; then
             echo "Installing rpi-ws281x..."
             "${MOONRAKER_VENV}/bin/pip" install --upgrade rpi-ws281x
@@ -360,7 +360,7 @@ install_rpi_ws281x() {
         if prompt_yes_no "Install rpi-ws281x?" "y"; then
             echo "Installing rpi-ws281x..."
             "${MOONRAKER_VENV}/bin/pip" install rpi-ws281x
-            
+
             # Verify installation
             if "${MOONRAKER_VENV}/bin/python" -c "import rpi_ws281x" 2>/dev/null; then
                 print_success "rpi-ws281x installed successfully"
@@ -371,6 +371,34 @@ install_rpi_ws281x() {
         else
             print_warning "Skipping rpi-ws281x installation"
             print_info "GPIO LED control will not be available"
+        fi
+    fi
+}
+
+#####################################################################
+##  Systemd Python Module Installation
+#####################################################################
+
+install_systemd_module() {
+    print_section "Installing systemd Python Module"
+
+    echo "The systemd module enables watchdog support for the proxy service."
+    echo "This prevents service crashes and ensures reliable LED control."
+    echo ""
+
+    # Check if already installed
+    if "${MOONRAKER_VENV}/bin/python" -c "import systemd.daemon" 2>/dev/null; then
+        print_success "systemd module already installed"
+    else
+        echo "Installing systemd module..."
+        "${MOONRAKER_VENV}/bin/pip" install systemd-python
+
+        # Verify installation
+        if "${MOONRAKER_VENV}/bin/python" -c "import systemd.daemon" 2>/dev/null; then
+            print_success "systemd module installed successfully"
+        else
+            print_warning "systemd module installation failed"
+            print_info "Proxy will still work but without watchdog protection"
         fi
     fi
 }
@@ -667,11 +695,12 @@ final_steps() {
 
 main() {
     print_header
-    
+
     preflight_checks
     detect_and_confirm_paths
     handle_pigpiod
     install_rpi_ws281x
+    install_systemd_module
     setup_proxy_service
     install_lumen_component
     setup_configuration
