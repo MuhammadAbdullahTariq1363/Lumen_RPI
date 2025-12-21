@@ -15,7 +15,7 @@ Smart LED effects that respond to your printer's state in real-time. No macros, 
 ## Features
 
 - **7 Printer States** - Automatic detection: idle, heating, printing, cooldown, error, bored, sleep
-- **7 LED Effects** - solid, pulse, heartbeat, disco, thermal gradient, print progress bar, off
+- **10 LED Effects** - solid, pulse, heartbeat, disco, rainbow, fire, comet, thermal gradient, print progress bar, off
 - **3 Driver Types** - GPIO (60fps smooth), Klipper SET_LED (MCU-attached), PWM (non-addressable)
 - **Modular Architecture** - Plugin-based effect and state systems for easy extension
 - **50+ Named Colors** - Aurora-compatible color palette
@@ -168,6 +168,28 @@ on_cooldown: heartbeat ice
 Random rainbow sparkles.
 ```ini
 on_bored: disco
+```
+
+### Rainbow
+Cycling rainbow animation - smooth spectrum rotation.
+```ini
+on_bored: rainbow
+on_idle: rainbow
+```
+
+### Fire
+Flickering flame simulation - realistic orange/red/yellow fire effect.
+```ini
+on_heating: fire
+on_error: fire
+```
+
+### Comet
+Moving light with trailing tail - comet/meteor effect.
+```ini
+# Format: comet <color>
+on_printing: comet cobalt
+on_heating: comet orange
 ```
 
 ### Thermal

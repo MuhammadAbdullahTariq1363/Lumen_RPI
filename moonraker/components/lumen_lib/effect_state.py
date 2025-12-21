@@ -21,6 +21,13 @@ class EffectState:
     # Disco-specific
     min_sparkle: int = 1
     max_sparkle: int = 6
+    # Rainbow-specific
+    rainbow_spread: float = 1.0          # 0.0-1.0, how much rainbow spreads across strip
+    # Fire-specific
+    fire_cooling: float = 0.3            # 0.0-1.0, cooling rate per update (higher = more chaotic)
+    # Comet-specific
+    comet_tail_length: int = 10          # Length of trailing tail in LEDs
+    comet_fade_rate: float = 0.5         # 0.0-1.0, how quickly tail fades (higher = shorter tail)
     # Thermal/Progress fill effects
     start_color: RGB = (0.5, 0.5, 0.5)  # steel
     end_color: RGB = (0.0, 1.0, 0.0)    # green

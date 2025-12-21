@@ -39,7 +39,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎯 v1.1.0 - Additional Printer States
+## 🎯 v1.2.0 - Additional Printer States
 
 ### New States to Detect
 - [ ] **Paused** - Print paused by user or M600
@@ -55,24 +55,36 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎨 v1.2.0 - New Effects
+## 🎨 v1.1.0 - New Effects (December 2025)
 
-### Planned Effects
-- [ ] **Rainbow** - Cycling rainbow pattern
-- [ ] **Fire** - Flickering flame simulation
-- [ ] **Comet** - Moving light with trailing tail
+### Completed Effects ✅
+- [x] **Rainbow** - Cycling rainbow pattern
+  - HSV-based smooth spectrum rotation
+  - Configurable spread across LED strip
+  - Works with single and multi-LED strips
+- [x] **Fire** - Flickering flame simulation
+  - Per-LED heat tracking for realistic flicker
+  - Orange/red/yellow color spectrum
+  - Configurable cooling rate for chaos control
+- [x] **Comet** - Moving light with trailing tail
+  - Bright head with exponential tail fade
+  - Configurable tail length and fade rate
+  - Supports forward and reverse direction
+
+### Future Effects (v1.3.0)
 - [ ] **Chase** - Sequential LED activation (KIT scanner style)
 - [ ] **Alert** - Fast blinking for critical notifications
 - [ ] **Wipe** - Fill/clear animation (left-to-right, right-to-left)
 
 **Implementation Notes:**
-- Add to `moonraker/components/lumen_lib/effects.py`
-- Update config parsing in lumen.py
-- Add effect settings to lumen.cfg.example
+- All effects registered in EFFECT_REGISTRY
+- Effect parameters added to EffectState dataclass
+- Configuration examples in lumen.cfg.example
+- All effects tested via preflight_check.py
 
 ---
 
-## 📊 v1.3.0 - Data Sources
+## 📊 v1.4.0 - Data Sources
 
 ### New Temperature Sources
 - [ ] **Chamber temperature** - Add to thermal effect
@@ -91,7 +103,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🔧 v1.4.0 - Quality of Life
+## 🔧 v1.5.0 - Quality of Life
 
 ### Configuration Enhancements
 - [ ] **Per-group FPS override** - Allow different update rates per group
@@ -113,7 +125,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎮 v1.5.0 - Fun Features
+## 🎮 v1.6.0 - Fun Features
 
 ### PONG Mode
 - [ ] **Interactive LED Pong game** - Play during long prints!
@@ -167,7 +179,8 @@ Active development tasks and future enhancements for LUMEN.
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
 **Current stable:** v1.0.0 (December 2025)
-**Next planned release:** v1.1.0 (Additional printer states) - Q1 2026
+**In development:** v1.1.0 (New effects: rainbow, fire, comet) - December 2025
+**Next planned release:** v1.2.0 (Additional printer states) - Q1 2026
 
 ---
 
@@ -197,5 +210,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** December 20, 2025
-**Current Version:** 1.0.0
-**Status:** Stable - Production tested on Voron Trident (full state cycle validation)
+**Current Version:** 1.1.0 (in development)
+**Status:** v1.0.0 Stable - Production tested on Voron Trident | v1.1.0 adds rainbow, fire, and comet effects

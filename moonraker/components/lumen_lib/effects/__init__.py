@@ -15,6 +15,9 @@ from .heartbeat import HeartbeatEffect
 from .disco import DiscoEffect
 from .thermal import ThermalEffect
 from .progress import ProgressEffect
+from .rainbow import RainbowEffect
+from .fire import FireEffect
+from .comet import CometEffect
 from .off import OffEffect
 
 # Base effect class
@@ -28,6 +31,9 @@ EFFECT_REGISTRY: Dict[str, Type[BaseEffect]] = {
     'disco': DiscoEffect,
     'thermal': ThermalEffect,
     'progress': ProgressEffect,
+    'rainbow': RainbowEffect,
+    'fire': FireEffect,
+    'comet': CometEffect,
     'off': OffEffect,
 }
 
@@ -71,5 +77,8 @@ __all__ = [
     'DiscoEffect',
     'ThermalEffect',
     'ProgressEffect',
+    'RainbowEffect',
+    'FireEffect',
+    'CometEffect',
     'OffEffect',
 ]

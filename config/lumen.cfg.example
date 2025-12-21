@@ -64,6 +64,23 @@ start_color: steel         # Color at 0% progress
 end_color: matrix          # Color at 100% progress
 gradient_curve: 1.5        # Slightly sharper at end
 
+[lumen_effect rainbow]
+speed: 0.5                 # Cycles per second (0.5 = 2 seconds per full rainbow)
+rainbow_spread: 1.0        # How much rainbow spreads across strip (0.0-1.0)
+max_brightness: 0.9
+
+[lumen_effect fire]
+speed: 10.0                # Flicker updates per second (higher = more chaotic)
+min_brightness: 0.2        # Dimmest flame
+max_brightness: 1.0        # Brightest flame
+fire_cooling: 0.3          # Cooling rate (0.0-1.0, higher = more chaotic)
+
+[lumen_effect comet]
+speed: 10.0                # Movement speed (LEDs per second)
+max_brightness: 1.0        # Brightness of comet head
+comet_tail_length: 10      # Length of trailing tail (in LEDs)
+comet_fade_rate: 0.5       # How quickly tail fades (0.0-1.0)
+
 
 # #####################################################################
 # ##                                                                 ##
@@ -171,6 +188,9 @@ gradient_curve: 1.5        # Slightly sharper at end
 ##    pulse <color>             - Breathing/fade effect
 ##    heartbeat <color>         - Pulsing like a heartbeat
 ##    disco                     - Random sparkles
+##    rainbow                   - Cycling rainbow animation
+##    fire                      - Flickering flame simulation
+##    comet <color>             - Moving light with trailing tail
 ##    thermal <src> <c1> <c2> <curve>  - Temperature gradient
 ##    progress <c1> <c2> <curve>       - Print progress gradient
 ##    off                       - LEDs off
