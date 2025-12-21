@@ -419,7 +419,7 @@ After=network.target
 Before=moonraker.service
 
 [Service]
-Type=simple
+Type=notify
 User=root
 ExecStart=${MOONRAKER_VENV}/bin/python ${PROXY_SCRIPT} --port ${PROXY_PORT} --lumen-cfg ${LUMEN_CFG}
 

@@ -424,7 +424,11 @@ class Lumen:
                     result["gradient_curve"] = float(parts[3])
                 except ValueError:
                     pass
-        
+
+        elif parts[0] in ("comet", "kitt") and len(parts) >= 2:
+            # comet/kitt with color: comet blue, kitt cobalt
+            result["color"] = parts[1]
+
         elif len(parts) >= 2:
             # Standard: effect color (or effect:color)
             if ':' in value:
