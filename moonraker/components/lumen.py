@@ -763,28 +763,17 @@ class Lumen:
                 index_end = int(group_cfg.get('index_end', 1))
                 direction = group_cfg.get('direction', 'standard')
 
-                # Build list of electrical indices based on direction
-                # direction: standard → electrical indices low→high (1,2,3,...,18)
-                # direction: reverse → electrical indices high→low (18,17,16,...,1)
-                if direction == 'reverse':
-                    # Start at high index, go to low index
-                    electrical_indices = list(range(index_end, index_start - 1, -1))
-                    phys_order = f"{index_end}→{index_start} (reverse)"
-                else:
-                    # Start at low index, go to high index
-                    electrical_indices = list(range(index_start, index_end + 1))
-                    phys_order = f"{index_start}→{index_end} (standard)"
-
-                # Add to circular map in order
-                for electrical_idx in electrical_indices:
+                # Build circular array with electrical indices in ASCENDING order
+                # The direction setting will be handled when sending colors to the driver
+                led_count = index_end - index_start + 1
+                for electrical_idx in range(index_start, index_end + 1):
                     circular_led_map.append((group_name, electrical_idx))
                 coordinated.add(group_name)
 
                 self._log_debug(
-                    f"Chase {chase_num} ({group_name}): direction={direction}, "
-                    f"electrical={index_start}→{index_end}, "
-                    f"physical={phys_order}, "
-                    f"ring_positions={len(circular_led_map)-len(electrical_indices)}→{len(circular_led_map)-1}"
+                    f"Chase {chase_num} ({group_name}): {led_count} LEDs, "
+                    f"direction={direction}, electrical={index_start}→{index_end}, "
+                    f"ring_pos={len(circular_led_map)-led_count}→{len(circular_led_map)-1}"
                 )
 
         if not circular_led_map:
@@ -837,7 +826,7 @@ class Lumen:
                 group_electrical_colors[group_name] = {}
             group_electrical_colors[group_name][electrical_idx] = circular_colors[circ_pos]
 
-        # Send colors to each group's driver in electrical order
+        # Send colors to each group's driver
         for group_name in coordinated:
             driver = self.drivers.get(group_name)
             if not driver or group_name not in group_electrical_colors:
@@ -846,6 +835,7 @@ class Lumen:
             group_cfg = self.led_groups.get(group_name, {})
             index_start = int(group_cfg.get('index_start', 1))
             index_end = int(group_cfg.get('index_end', 1))
+            direction = group_cfg.get('direction', 'standard')
 
             # Build color array in electrical order (index_start to index_end)
             electrical_colors = []
@@ -853,11 +843,17 @@ class Lumen:
                 color = group_electrical_colors[group_name].get(electrical_idx)
                 electrical_colors.append(color)
 
-            # Send to driver (driver expects colors in electrical order)
+            # Reverse colors if direction is 'reverse' (same as thermal/progress effects)
+            # This accounts for the physical wiring where high electrical indices
+            # correspond to low physical positions
+            if direction == 'reverse':
+                electrical_colors = list(reversed(electrical_colors))
+
+            # Send to driver
             try:
                 if hasattr(driver, 'set_leds'):
                     await driver.set_leds(electrical_colors)
-                    self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (electrical order)")
+                    self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (direction={direction})")
             except Exception as e:
                 self._log_error(f"Multi-chase error in {group_name}: {e}")
 
