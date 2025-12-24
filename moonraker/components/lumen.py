@@ -843,11 +843,10 @@ class Lumen:
                 color = group_electrical_colors[group_name].get(electrical_idx)
                 electrical_colors.append(color)
 
-            # Reverse colors if direction is 'reverse' (same as thermal/progress effects)
-            # This accounts for the physical wiring where high electrical indices
-            # correspond to low physical positions
-            if direction == 'reverse':
-                electrical_colors = list(reversed(electrical_colors))
+            # DISABLED FOR DEBUGGING: Test chase flow without direction reversal
+            # This will make chase flow: electrical 1→18, 37→53, 19→36
+            # if direction == 'reverse':
+            #     electrical_colors = list(reversed(electrical_colors))
 
             # Send to driver
             try:

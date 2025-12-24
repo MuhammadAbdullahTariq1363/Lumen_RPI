@@ -146,23 +146,23 @@ class ChaseEffect(BaseEffect):
         # Calculate time delta for physics
         dt = 1.0 / 60.0  # Assume 60 FPS for smooth animation
 
-        # Check for random role swap (every ~7 seconds on average)
-        swap_interval = getattr(state, 'chase_role_swap_interval', 7.0)
-        if now - self._last_role_swap > swap_interval:
-            variation = random.uniform(-2.0, 2.0)
-            if random.random() < 0.5:  # 50% chance to swap
-                self._swap_roles()
-                self._last_role_swap = now + variation
+        # DISABLED FOR DEBUGGING: Random role swap
+        # swap_interval = getattr(state, 'chase_role_swap_interval', 7.0)
+        # if now - self._last_role_swap > swap_interval:
+        #     variation = random.uniform(-2.0, 2.0)
+        #     if random.random() < 0.5:  # 50% chance to swap
+        #         self._swap_roles()
+        #         self._last_role_swap = now + variation
 
         # Calculate distance between predator and prey
         distance = self._get_circular_distance(self._predator_pos, self._prey_pos, total_leds)
         proximity_threshold = getattr(state, 'chase_proximity_threshold', 0.15) * total_leds
 
-        # Check for collision
-        if distance < state.chase_size:
-            # Collision! Bounce, pause, and swap roles
-            self._handle_collision(state, now, total_leds)
-            return self._render_segments(state, total_leds), True
+        # DISABLED FOR DEBUGGING: Collision handling
+        # if distance < state.chase_size:
+        #     # Collision! Bounce, pause, and swap roles
+        #     self._handle_collision(state, now, total_leds)
+        #     return self._render_segments(state, total_leds), True
 
         # Proximity acceleration
         accel_factor = getattr(state, 'chase_accel_factor', 1.5)
@@ -177,15 +177,15 @@ class ChaseEffect(BaseEffect):
             predator_speed = base_speed
             prey_speed = base_speed
 
-        # Add random speed variation every ~2 seconds
-        if now - self._last_random_change > 2.0:
-            self._last_random_change = now
-            if random.random() < 0.3:  # 30% chance
-                # Random direction change or speed variation
-                if random.random() < 0.5:
-                    self._predator_vel *= -1  # Reverse direction
-                else:
-                    self._prey_vel *= -1
+        # DISABLED FOR DEBUGGING: Random direction changes
+        # if now - self._last_random_change > 2.0:
+        #     self._last_random_change = now
+        #     if random.random() < 0.3:  # 30% chance
+        #         # Random direction change or speed variation
+        #         if random.random() < 0.5:
+        #             self._predator_vel *= -1  # Reverse direction
+        #         else:
+        #             self._prey_vel *= -1
 
         # Update velocities
         predator_dir = 1.0 if self._predator_vel > 0 else -1.0
