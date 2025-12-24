@@ -749,80 +749,59 @@ class Lumen:
         """
         coordinated = set()
 
-        # Build circular LED array in PHYSICAL order (by electrical index, not chase number)
-        # Get all chase groups with their electrical indices
-        groups_with_indices = []
-        for chase_num, group_names in chase_groups.items():
-            for group_name in group_names:
+        # Build circular LED array in CHASE NUMBER order, respecting direction
+        # Sort by chase number (1, 2, 3, ...)
+        sorted_chase_nums = sorted(chase_groups.keys())
+
+        # Build mapping: circular_position -> (group_name, electrical_index)
+        circular_led_map = []  # List of (group_name, electrical_index)
+
+        for chase_num in sorted_chase_nums:
+            for group_name in chase_groups[chase_num]:
                 group_cfg = self.led_groups.get(group_name, {})
-                electrical_start = int(group_cfg.get('index_start', 1))
-                groups_with_indices.append((electrical_start, group_name))
+                index_start = int(group_cfg.get('index_start', 1))
+                index_end = int(group_cfg.get('index_end', 1))
+                direction = group_cfg.get('direction', 'standard')
 
-        # Sort by electrical index to get physical ring order
-        groups_with_indices.sort(key=lambda x: x[0])
-        circular_groups = [name for _, name in groups_with_indices]
+                # Build list of electrical indices in physical ring order
+                if direction == 'reverse':
+                    # Reverse: high to low (e.g., 18, 17, ..., 1)
+                    electrical_indices = list(range(index_end, index_start - 1, -1))
+                else:
+                    # Standard: low to high (e.g., 1, 2, ..., 18)
+                    electrical_indices = list(range(index_start, index_end + 1))
 
-        if not circular_groups:
+                # Add to circular map
+                for electrical_idx in electrical_indices:
+                    circular_led_map.append((group_name, electrical_idx))
+                coordinated.add(group_name)
+
+                self._log_debug(
+                    f"Chase {chase_num} ({group_name}): direction={direction}, "
+                    f"index={index_start}-{index_end}, "
+                    f"physical_ring_order={electrical_indices[0]}→{electrical_indices[-1]}"
+                )
+
+        if not circular_led_map:
             return coordinated
 
-        # Build mappings for circular array
-        total_leds = 0
-        group_ranges = []  # List of (group_name, start_index, end_index, reversed)
+        total_leds = len(circular_led_map)
 
-        for group_name in circular_groups:
-            driver = self.drivers.get(group_name)
-            if not driver:
-                continue
-
-            state = self.effect_states.get(group_name)
-            if not state:
-                continue
-
-            led_count = driver.led_count if hasattr(driver, 'led_count') else 1
-            start_index = total_leds
-            end_index = total_leds + led_count
-
-            # Check if group has reverse direction
-            group_cfg = self.led_groups.get(group_name, {})
-            direction = group_cfg.get("direction", "standard")
-            reversed_dir = direction == "reverse"
-
-            self._log_debug(
-                f"Chase group {group_name}: chase_num={state.chase_group_num}, "
-                f"direction={direction}, led_count={led_count}, "
-                f"index_start={group_cfg.get('index_start')}, "
-                f"index_end={group_cfg.get('index_end')}, "
-                f"circular_pos={start_index}-{end_index}"
-            )
-
-            group_ranges.append((group_name, start_index, end_index, reversed_dir))
-            total_leds += led_count
-            coordinated.add(group_name)
-
-        if total_leds == 0:
-            return coordinated
-
-        # Get chase effect instance (use first group's state as master)
-        first_group = circular_groups[0]
-        master_state = self.effect_states.get(first_group)
+        # Get master state from first chase group
+        first_group_name = chase_groups[sorted_chase_nums[0]][0]
+        master_state = self.effect_states.get(first_group_name)
         if not master_state:
             return coordinated
 
         # Get or create chase effect instance
-        cache_key = f"_multi_chase:{':'.join(circular_groups)}"
+        cache_key = f"_multi_chase:{':'.join([name for name, _ in circular_led_map])}"
         if cache_key not in self.effect_instances:
             from .lumen_lib.effects import ChaseEffect
             self.effect_instances[cache_key] = ChaseEffect()
         chase_effect = self.effect_instances[cache_key]
 
-        # Build multi-group info for chase effect
-        multi_group_info = {
-            "total_leds": total_leds,
-            "group_ranges": group_ranges,
-        }
-
         # Calculate full circular array
-        state_data = {"multi_group_info": multi_group_info}
+        state_data = {"multi_group_info": {}}
         circular_colors, needs_update = chase_effect.calculate(
             master_state, now, total_leds, state_data
         )
@@ -841,26 +820,39 @@ class Lumen:
         if not needs_update:
             return coordinated
 
-        # Split circular array back to individual groups
-        for group_name, start, end, reversed_dir in group_ranges:
+        # Map circular array colors back to electrical indices for each group
+        # circular_led_map contains: [(group_name, electrical_index), ...]
+        # circular_colors contains: [color_for_pos_0, color_for_pos_1, ...]
+
+        # Build color map: (group_name, electrical_index) -> color
+        group_electrical_colors = {}  # group_name -> {electrical_index: color}
+
+        for circ_pos, (group_name, electrical_idx) in enumerate(circular_led_map):
+            if group_name not in group_electrical_colors:
+                group_electrical_colors[group_name] = {}
+            group_electrical_colors[group_name][electrical_idx] = circular_colors[circ_pos]
+
+        # Send colors to each group's driver in electrical order
+        for group_name in coordinated:
             driver = self.drivers.get(group_name)
-            if not driver:
+            if not driver or group_name not in group_electrical_colors:
                 continue
 
-            # Extract colors for this group
-            group_colors = circular_colors[start:end]
+            group_cfg = self.led_groups.get(group_name, {})
+            index_start = int(group_cfg.get('index_start', 1))
+            index_end = int(group_cfg.get('index_end', 1))
 
-            # For direction:reverse, we need to reverse the color array
-            # because the driver sends colors in electrical order, but
-            # the LEDs are physically wired backwards
-            if reversed_dir:
-                group_colors = list(reversed(group_colors))
-                self._log_debug(f"Reversing colors for {group_name} (direction=reverse)")
+            # Build color array in electrical order (index_start to index_end)
+            electrical_colors = []
+            for electrical_idx in range(index_start, index_end + 1):
+                color = group_electrical_colors[group_name].get(electrical_idx)
+                electrical_colors.append(color)
 
-            # Apply to driver
+            # Send to driver (driver expects colors in electrical order)
             try:
                 if hasattr(driver, 'set_leds'):
-                    await driver.set_leds(group_colors)
+                    await driver.set_leds(electrical_colors)
+                    self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (electrical order)")
             except Exception as e:
                 self._log_error(f"Multi-chase error in {group_name}: {e}")
 
