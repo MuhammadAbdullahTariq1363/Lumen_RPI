@@ -812,6 +812,17 @@ class Lumen:
             master_state, now, total_leds, state_data
         )
 
+        # Debug logging for chase coordination
+        if hasattr(chase_effect, '_predator_pos'):
+            self._log_debug(
+                f"Multi-chase: total_leds={total_leds}, "
+                f"predator_pos={chase_effect._predator_pos:.1f}, "
+                f"prey_pos={chase_effect._prey_pos:.1f}, "
+                f"predator_vel={chase_effect._predator_vel:.1f}, "
+                f"prey_vel={chase_effect._prey_vel:.1f}, "
+                f"speed={master_state.speed}"
+            )
+
         if not needs_update:
             return coordinated
 
