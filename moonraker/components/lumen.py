@@ -29,7 +29,7 @@ if str(_component_dir) not in sys.path:
 from lumen_lib import (
     RGB, get_color, list_colors,
     EffectState,
-    LEDDriver, KlipperDriver, PWMDriver, create_driver,
+    LEDDriver, KlipperDriver, PWMDriver, GPIODriver, ProxyDriver, create_driver,
     PrinterState, PrinterEvent, StateDetector,
 )
 from lumen_lib.effects import EFFECT_REGISTRY
@@ -720,9 +720,6 @@ class Lumen:
     
     async def _animation_loop(self) -> None:
         """Background loop for animated effects."""
-        # Import driver types for isinstance checks
-        from .lumen_lib.drivers import GPIODriver, ProxyDriver
-
         try:
             while self._animation_running:
                 now = time.time()
