@@ -763,20 +763,19 @@ class Lumen:
                 index_end = int(group_cfg.get('index_end', 1))
                 direction = group_cfg.get('direction', 'standard')
 
-                # Build list of electrical indices in physical ring order
-                # Physical order is determined by direction setting
-                # Electrical indices are ALWAYS low→high (1,2,3,...)
-                # direction:reverse means physical LEDs numbered high→low map to electrical low→high
-                # So: Physical 18→Electrical 1, Physical 17→Electrical 2, etc.
-                electrical_indices = list(range(index_start, index_end + 1))
-
-                # Log what we're doing
+                # Build list of electrical indices based on direction
+                # direction: standard → electrical indices low→high (1,2,3,...,18)
+                # direction: reverse → electrical indices high→low (18,17,16,...,1)
                 if direction == 'reverse':
+                    # Start at high index, go to low index
+                    electrical_indices = list(range(index_end, index_start - 1, -1))
                     phys_order = f"{index_end}→{index_start} (reverse)"
                 else:
+                    # Start at low index, go to high index
+                    electrical_indices = list(range(index_start, index_end + 1))
                     phys_order = f"{index_start}→{index_end} (standard)"
 
-                # Add to circular map
+                # Add to circular map in order
                 for electrical_idx in electrical_indices:
                     circular_led_map.append((group_name, electrical_idx))
                 coordinated.add(group_name)
