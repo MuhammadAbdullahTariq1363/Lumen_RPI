@@ -614,6 +614,12 @@ class Lumen:
         chase_size = int(params.get("chase_size", 5))
         chase_offset_base = float(params.get("chase_offset_base", 0.5))
         chase_offset_variation = float(params.get("chase_offset_variation", 0.1))
+        chase_proximity_threshold = float(params.get("chase_proximity_threshold", 0.15))
+        chase_accel_factor = float(params.get("chase_accel_factor", 1.5))
+        chase_role_swap_interval = float(params.get("chase_role_swap_interval", 7.0))
+        chase_collision_pause = float(params.get("chase_collision_pause", 0.3))
+        # Multi-group chase number from inline spec (chase 1, chase 2, etc.)
+        chase_group_num = mapping.get("group_num")
 
         # KITT params
         kitt_eye_size = int(params.get("kitt_eye_size", 3))
@@ -680,6 +686,11 @@ class Lumen:
             state.chase_size = chase_size
             state.chase_offset_base = chase_offset_base
             state.chase_offset_variation = chase_offset_variation
+            state.chase_proximity_threshold = chase_proximity_threshold
+            state.chase_accel_factor = chase_accel_factor
+            state.chase_role_swap_interval = chase_role_swap_interval
+            state.chase_collision_pause = chase_collision_pause
+            state.chase_group_num = chase_group_num
             # KITT
             state.kitt_eye_size = kitt_eye_size
             state.kitt_tail_length = kitt_tail_length
@@ -689,9 +700,147 @@ class Lumen:
             state.direction = group_cfg.get("direction", "standard")
     
     # ─────────────────────────────────────────────────────────────
+    # Multi-Group Chase Coordination
+    # ─────────────────────────────────────────────────────────────
+
+    def _detect_chase_groups(self) -> Dict[int, List[str]]:
+        """
+        Detect chase groups with numbering (chase 1, chase 2, etc.).
+
+        Returns:
+            Dict mapping group_num to list of group names in that chase group.
+            Empty dict if no multi-group chase detected.
+        """
+        chase_groups: Dict[int, List[str]] = {}
+
+        for group_name, state in self.effect_states.items():
+            if state.effect != "chase":
+                continue
+
+            # Check if this group has a chase number
+            # Need to look up the original event mapping to get group_num
+            group_num = getattr(state, 'chase_group_num', None)
+            if group_num is not None:
+                if group_num not in chase_groups:
+                    chase_groups[group_num] = []
+                chase_groups[group_num].append(group_name)
+
+        # Only return if we have multiple groups or numbered groups
+        if chase_groups and max(chase_groups.keys()) > 0:
+            return chase_groups
+        return {}
+
+    async def _render_multi_group_chase(
+        self,
+        chase_groups: Dict[int, List[str]],
+        now: float,
+        is_printing: bool
+    ) -> set:
+        """
+        Render coordinated multi-group chase effect.
+
+        Args:
+            chase_groups: Dict mapping group numbers to group names
+            now: Current time
+            is_printing: Whether printer is currently printing
+
+        Returns:
+            Set of group names that were coordinated (to skip in main loop)
+        """
+        coordinated = set()
+
+        # Build circular LED array from numbered groups in order
+        sorted_nums = sorted(chase_groups.keys())
+        circular_groups = []
+        for num in sorted_nums:
+            for group_name in chase_groups[num]:
+                circular_groups.append(group_name)
+
+        if not circular_groups:
+            return coordinated
+
+        # Build mappings for circular array
+        total_leds = 0
+        group_ranges = []  # List of (group_name, start_index, end_index, reversed)
+
+        for group_name in circular_groups:
+            driver = self.drivers.get(group_name)
+            if not driver:
+                continue
+
+            state = self.effect_states.get(group_name)
+            if not state:
+                continue
+
+            led_count = driver.led_count if hasattr(driver, 'led_count') else 1
+            start_index = total_leds
+            end_index = total_leds + led_count
+
+            # Check if group has reverse direction
+            group_cfg = self.led_groups.get(group_name, {})
+            reversed_dir = group_cfg.get("direction", "standard") == "reverse"
+
+            group_ranges.append((group_name, start_index, end_index, reversed_dir))
+            total_leds += led_count
+            coordinated.add(group_name)
+
+        if total_leds == 0:
+            return coordinated
+
+        # Get chase effect instance (use first group's state as master)
+        first_group = circular_groups[0]
+        master_state = self.effect_states.get(first_group)
+        if not master_state:
+            return coordinated
+
+        # Get or create chase effect instance
+        cache_key = f"_multi_chase:{':'.join(circular_groups)}"
+        if cache_key not in self.effect_instances:
+            from .lumen_lib.effects import ChaseEffect
+            self.effect_instances[cache_key] = ChaseEffect()
+        chase_effect = self.effect_instances[cache_key]
+
+        # Build multi-group info for chase effect
+        multi_group_info = {
+            "total_leds": total_leds,
+            "group_ranges": group_ranges,
+        }
+
+        # Calculate full circular array
+        state_data = {"multi_group_info": multi_group_info}
+        circular_colors, needs_update = chase_effect.calculate(
+            master_state, now, total_leds, state_data
+        )
+
+        if not needs_update:
+            return coordinated
+
+        # Split circular array back to individual groups
+        for group_name, start, end, reversed_dir in group_ranges:
+            driver = self.drivers.get(group_name)
+            if not driver:
+                continue
+
+            # Extract colors for this group
+            group_colors = circular_colors[start:end]
+
+            # Reverse if needed
+            if reversed_dir:
+                group_colors = list(reversed(group_colors))
+
+            # Apply to driver
+            try:
+                if hasattr(driver, 'set_leds'):
+                    await driver.set_leds(group_colors)
+            except Exception as e:
+                self._log_error(f"Multi-chase error in {group_name}: {e}")
+
+        return coordinated
+
+    # ─────────────────────────────────────────────────────────────
     # Animation Loop
     # ─────────────────────────────────────────────────────────────
-    
+
     async def _ensure_animation_loop(self) -> None:
         """Start/stop animation loop based on active effects."""
         # Check if any effect needs animation (not "off" or "solid")
@@ -728,7 +877,17 @@ class Lumen:
                 # Collect intervals from all active animated groups
                 intervals = []
 
+                # Detect multi-group chase coordination
+                chase_groups = self._detect_chase_groups()
+                coordinated_groups = set()
+                if chase_groups:
+                    coordinated_groups = await self._render_multi_group_chase(chase_groups, now, is_printing)
+
                 for group_name, state in self.effect_states.items():
+                    # Skip groups that are part of multi-group chase coordination
+                    if group_name in coordinated_groups:
+                        continue
+
                     # Check if effect exists in registry
                     effect_class = EFFECT_REGISTRY.get(state.effect)
                     if not effect_class:
