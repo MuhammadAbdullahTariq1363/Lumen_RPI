@@ -764,12 +764,17 @@ class Lumen:
                 direction = group_cfg.get('direction', 'standard')
 
                 # Build list of electrical indices in physical ring order
+                # Physical order is determined by direction setting
+                # Electrical indices are ALWAYS low→high (1,2,3,...)
+                # direction:reverse means physical LEDs numbered high→low map to electrical low→high
+                # So: Physical 18→Electrical 1, Physical 17→Electrical 2, etc.
+                electrical_indices = list(range(index_start, index_end + 1))
+
+                # Log what we're doing
                 if direction == 'reverse':
-                    # Reverse: high to low (e.g., 18, 17, ..., 1)
-                    electrical_indices = list(range(index_end, index_start - 1, -1))
+                    phys_order = f"{index_end}→{index_start} (reverse)"
                 else:
-                    # Standard: low to high (e.g., 1, 2, ..., 18)
-                    electrical_indices = list(range(index_start, index_end + 1))
+                    phys_order = f"{index_start}→{index_end} (standard)"
 
                 # Add to circular map
                 for electrical_idx in electrical_indices:
@@ -778,8 +783,9 @@ class Lumen:
 
                 self._log_debug(
                     f"Chase {chase_num} ({group_name}): direction={direction}, "
-                    f"index={index_start}-{index_end}, "
-                    f"physical_ring_order={electrical_indices[0]}→{electrical_indices[-1]}"
+                    f"electrical={index_start}→{index_end}, "
+                    f"physical={phys_order}, "
+                    f"ring_positions={len(circular_led_map)-len(electrical_indices)}→{len(circular_led_map)-1}"
                 )
 
         if not circular_led_map:
