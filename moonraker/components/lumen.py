@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.2.0-dev"
+__version__ = "1.3.0"
 
 import asyncio
 import json
@@ -496,8 +496,11 @@ class Lumen:
                 "extruder": ["temperature", "target"],
                 "idle_timeout": ["state"],
                 "toolhead": ["position"],
+                # v1.3.0 - Optional sensors (graceful if not present)
+                "temperature_sensor chamber": ["temperature"],
+                "filament_switch_sensor filament_sensor": ["filament_detected"],
             })
-            
+
             # Query current state (subscription only gives deltas)
             result = await klippy_apis.query_objects({
                 "webhooks": ["state"],
@@ -507,6 +510,9 @@ class Lumen:
                 "extruder": ["temperature", "target"],
                 "idle_timeout": ["state"],
                 "toolhead": ["position"],
+                # v1.3.0 - Optional sensors
+                "temperature_sensor chamber": ["temperature"],
+                "filament_switch_sensor filament_sensor": ["filament_detected"],
             })
             if result:
                 self.printer_state.update_from_status(result)
@@ -1030,8 +1036,9 @@ class Lumen:
                                 'bed_target': self.printer_state.bed_target,
                                 'extruder_temp': self.printer_state.extruder_temp,
                                 'extruder_target': self.printer_state.extruder_target,
-                                'chamber_temp': 0.0,  # TODO: Add chamber tracking
-                                'chamber_target': 0.0,
+                                # v1.3.0 - Chamber temperature
+                                'chamber_temp': self.printer_state.chamber_temp,
+                                'chamber_target': self.printer_state.chamber_target,
                                 'temp_floor': self.temp_floor,
                                 # Progress for progress effect
                                 'print_progress': self.printer_state.progress,

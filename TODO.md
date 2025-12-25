@@ -39,16 +39,16 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎯 v1.2.0 - Additional Printer States (In Development)
+## ✅ v1.2.0 - Additional Printer States (December 2025)
 
 ### New States to Detect
-- [ ] **Homing** - G28 in progress
-- [ ] **Meshing** - BED_MESH_CALIBRATE running
-- [ ] **Leveling** - QUAD_GANTRY_LEVEL or Z_TILT_ADJUST running
-- [ ] **Probing** - PROBE_CALIBRATE or similar
-- [ ] **Paused** - Print paused by user or PAUSE macro
-- [ ] **Cancelled** - Print cancelled by CANCEL_PRINT macro
-- [ ] **Filament Change** - Filament load/unload/runout (M600, etc.)
+- [x] **Homing** - G28 in progress
+- [x] **Meshing** - BED_MESH_CALIBRATE running
+- [x] **Leveling** - QUAD_GANTRY_LEVEL or Z_TILT_ADJUST running
+- [x] **Probing** - PROBE_CALIBRATE or similar
+- [x] **Paused** - Print paused by user or PAUSE macro
+- [x] **Cancelled** - Print cancelled by CANCEL_PRINT macro
+- [x] **Filament Change** - Filament load/unload/runout (M600, etc.)
 
 **Implementation Approach:**
 - User-configurable macro tracking in `[lumen_settings]`
@@ -112,17 +112,19 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 📊 v1.3.0 - Data Sources
+## ✅ v1.3.0 - Data Sources (December 2025)
 
 ### New Temperature Sources
-- [ ] **Chamber temperature** - Add to thermal effect
+- [x] **Chamber temperature** - Add to thermal effect
   - Subscribe to `temperature_sensor chamber` if available
   - Graceful fallback if not present
+  - Thermal effect now supports `temp_source: chamber`
 
 ### Filament Sensor Integration
-- [ ] **Filament runout detection** - Trigger special effect
-  - Subscribe to `filament_switch_sensor` events
-  - Configurable `on_runout` effect per group
+- [x] **Filament runout detection** - Trigger special effect
+  - Subscribe to `filament_switch_sensor filament_sensor` events
+  - Automatically triggers `on_filament` state when runout detected
+  - Works alongside macro-triggered filament states
 
 ---
 
@@ -199,9 +201,9 @@ Active development tasks and future enhancements for LUMEN.
 - **Minor releases (v1.x.0)**: New features, backward compatible
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.1.5 (December 2025)
-**In development:** v1.2.0 (Additional printer states) - Q1 2026
-**Next planned release:** v1.3.0 (Data sources) - Q1 2026
+**Current stable:** v1.3.0 (December 2025)
+**In development:** v1.4.0 (Clean up and optimize)
+**Next planned release:** v1.4.0 (Clean up and optimize) - Q1 2026
 
 ---
 
@@ -231,5 +233,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** December 24, 2025
-**Current Version:** v1.1.5 (stable)
-**Status:** v1.1.5 Stable - Production tested on Voron Trident | Adds rainbow, fire, comet, chase (multi-group coordination), and KITT scanner effects
+**Current Version:** v1.3.0 (stable)
+**Status:** v1.3.0 Stable - Production tested on Voron Trident | Adds macro-triggered states (homing, meshing, leveling, probing, paused, cancelled, filament), chamber temperature support, and filament sensor integration

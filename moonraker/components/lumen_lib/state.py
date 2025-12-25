@@ -41,6 +41,9 @@ class PrinterState:
     bed_target: float = 0.0
     extruder_temp: float = 0.0
     extruder_target: float = 0.0
+    # v1.3.0 - Chamber temperature support
+    chamber_temp: float = 0.0
+    chamber_target: float = 0.0
 
     position_x: float = 0.0
     position_y: float = 0.0
@@ -51,6 +54,8 @@ class PrinterState:
     # v1.2.0 - Macro-triggered state tracking
     active_macro_state: Optional[str] = None  # homing, meshing, leveling, probing, paused, cancelled, filament
     macro_start_time: float = 0.0
+    # v1.3.0 - Filament sensor tracking
+    filament_detected: Optional[bool] = None  # True=present, False=runout, None=no sensor
     
     def update_from_status(self, status: Dict[str, Any]) -> None:
         """Update state from Moonraker status update."""
@@ -84,7 +89,20 @@ class PrinterState:
                 self.extruder_temp = ex.get("temperature", 0.0) or 0.0
             if "target" in ex:
                 self.extruder_target = ex.get("target", 0.0) or 0.0
-        
+
+        # v1.3.0 - Chamber temperature (temperature_sensor chamber)
+        if "temperature_sensor chamber" in status:
+            chamber = status["temperature_sensor chamber"]
+            if "temperature" in chamber:
+                self.chamber_temp = chamber.get("temperature", 0.0) or 0.0
+            # Note: temperature_sensor doesn't have targets, only monitored temp
+
+        # v1.3.0 - Filament sensor
+        if "filament_switch_sensor filament_sensor" in status:
+            fs = status["filament_switch_sensor filament_sensor"]
+            if "filament_detected" in fs:
+                self.filament_detected = fs.get("filament_detected")
+
         if "toolhead" in status:
             th = status["toolhead"]
             if "position" in th:
@@ -211,6 +229,12 @@ class StateDetector:
             },
             'idle_timeout': {'state': state.idle_state},
         }
+
+        # v1.3.0 - Add filament sensor if present
+        if state.filament_detected is not None:
+            status['filament_switch_sensor filament_sensor'] = {
+                'filament_detected': state.filament_detected
+            }
 
         # Build context for time-based detectors
         context = {
