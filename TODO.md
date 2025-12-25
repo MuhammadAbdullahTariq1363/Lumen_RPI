@@ -71,10 +71,19 @@ Active development tasks and future enhancements for LUMEN.
   - Configurable tail length and fade rate
   - Supports forward and reverse direction
 
-### Future Effects (v1.3.0)
-- [ ] **Chase** - Sequential LED activation (KIT scanner style)
-- [ ] **Alert** - Fast blinking for critical notifications
-- [ ] **Wipe** - Fill/clear animation (left-to-right, right-to-left)
+### v1.1.5 Completed Effects ✅
+- [x] **Chase** - Predator/prey chase with multi-group coordination
+  - Single-group mode with dynamic offset variation
+  - Multi-group circular array coordination
+  - Collision detection with bounce and role swap
+  - Proximity acceleration when close
+  - Random direction changes and role swaps
+  - Respects direction setting per group
+- [x] **KITT** - Knight Rider scanner effect
+  - Smooth bounce animation with fading tail
+  - Optional bed mesh tracking (follows X or Y axis)
+  - Configurable eye size and tail length
+
 
 **Implementation Notes:**
 - All effects registered in EFFECT_REGISTRY
@@ -84,7 +93,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 📊 v1.4.0 - Data Sources
+## 📊 v1.3.0 - Data Sources
 
 ### New Temperature Sources
 - [ ] **Chamber temperature** - Add to thermal effect
@@ -96,27 +105,24 @@ Active development tasks and future enhancements for LUMEN.
   - Subscribe to `filament_switch_sensor` events
   - Configurable `on_runout` effect per group
 
-### Position-Based Effects
-- [ ] **Z-height gradient** - Color changes based on current Z position
-  - Use toolhead position data
-  - Useful for showing print height visually
+---
+
+## 🔧 v1.4.0 - Clean Up and Optimize
+- [ ] **Cleanup** - Identify and remove - dead and dying code. Ensure proper documentation within code for clear purpose
+- [ ] **Update** - Update All Docs with status and intenet. Remove dead and dying information as needed.
+- [ ] **Identify areas for optimization** - Identify areas for optimization and an order of importance. Implement as needed
 
 ---
 
 ## 🔧 v1.5.0 - Quality of Life
 
 ### Configuration Enhancements
-- [ ] **Per-group FPS override** - Allow different update rates per group
-- [ ] **Direction parameter** - Reverse LED addressing (end-to-start)
-  - Already in config schema, needs implementation verification
-- [ ] **Multi-color solid** - Alternating color patterns for solid effect
-- [ ] **Effect chaining** - Transition between effects smoothly
-
+- [ ] **Group Min/Max brightness** - Allow group based min/max brightness
 ### API Improvements
 - [ ] **GET /server/lumen/effects** - List all available effects and parameters
 - [ ] **POST /server/lumen/set_group** - Temporarily override group effect via API
 - [ ] **WebSocket notifications** - Broadcast state changes to Mainsail/Fluidd
-- [ ] **Macro integration** - LUMEN_SET_EFFECT macro for G-code control
+- [ ] **Macro integration** - LUMEN_SET_RELOAD reload lumen after a .cfg change
 
 ### Debugging Tools
 - [ ] **Effect preview mode** - Test effects without changing hardware
@@ -128,17 +134,13 @@ Active development tasks and future enhancements for LUMEN.
 ## 🎮 v1.6.0 - Fun Features
 
 ### PONG Mode
-- [ ] **Interactive LED Pong game** - Play during long prints!
+- [ ] **LED Pong game** - Printer plays during long prints!
   - Use position_x for paddle control
+  - Use postion_y for cross "board" postion tracking and "scoring" calculation. Will need to read the printer.cfg for x and y size to determine LED index to display at which coord. Will need some thought to come up with proper method.
   - Ball bounces off "walls" (LED ends)
-  - Score tracking via Mainsail console
-  - Enable via `on_printing: pong` (because why not?)
-
-### Music Reactive (Stretch Goal)
-- [ ] **Audio input integration** - LEDs react to print noises?
-  - USB microphone support
-  - FFT analysis for frequency-based colors
-  - Beat detection for pulse timing
+  - Score tracking via progress bar injection for scoring events and to show winner then end injection and continue progress bar.
+  - Winner to be shown at 99% complete
+  -
 
 ---
 
@@ -178,9 +180,9 @@ Active development tasks and future enhancements for LUMEN.
 - **Minor releases (v1.x.0)**: New features, backward compatible
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.0.0 (December 2025)
-**In development:** v1.1.0 (New effects: rainbow, fire, comet) - December 2025
-**Next planned release:** v1.2.0 (Additional printer states) - Q1 2026
+**Current stable:** v1.1.5 (December 2025)
+**In development:** v1.2.0 (Additional printer states) - Q1 2026
+**Next planned release:** v1.3.0 (Data sources) - Q1 2026
 
 ---
 
@@ -209,6 +211,6 @@ Random ideas not yet prioritized:
 
 ---
 
-**Last Updated:** December 20, 2025
-**Current Version:** 1.1.0 (in development)
-**Status:** v1.0.0 Stable - Production tested on Voron Trident | v1.1.0 adds rainbow, fire, and comet effects
+**Last Updated:** December 24, 2025
+**Current Version:** v1.1.5 (stable)
+**Status:** v1.1.5 Stable - Production tested on Voron Trident | Adds rainbow, fire, comet, chase (multi-group coordination), and KITT scanner effects

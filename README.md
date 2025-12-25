@@ -5,23 +5,24 @@
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.0.0-blue)]()
+[![Version](https://img.shields.io/badge/version-v1.1.5-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.0.0 Stable Release** - Production tested on Voron Trident with full state cycle validation (fresh install → heating → printing → cooldown → idle → bored → sleep → rewake cycle)
+> **v1.1.5 Release** - Multi-group chase coordination and KITT scanner effect with bed mesh tracking
 
 ---
 
 ## Features
 
 - **7 Printer States** - Automatic detection: idle, heating, printing, cooldown, error, bored, sleep
-- **10 LED Effects** - solid, pulse, heartbeat, disco, rainbow, fire, comet, thermal gradient, print progress bar, off
+- **12 LED Effects** - solid, pulse, heartbeat, disco, rainbow, fire, comet, chase, KITT scanner, thermal gradient, print progress bar, off
+- **Multi-Group Coordination** - Seamless animations across multiple LED strips with predator/prey chase behavior
 - **3 Driver Types** - GPIO (60fps smooth), Klipper SET_LED (MCU-attached), PWM (non-addressable)
 - **Modular Architecture** - Plugin-based effect and state systems for easy extension
 - **50+ Named Colors** - Aurora-compatible color palette
 - **Hot Reload** - Update config without restarting Moonraker
 - **Full API** - REST endpoints for status, testing, and control
-- **Production Ready** - Comprehensive code review completed, all critical bugs fixed
+- **Production Ready** - Comprehensive testing on Voron Trident with multi-group animations
 
 ---
 
@@ -192,6 +193,74 @@ on_printing: comet cobalt
 on_heating: comet orange
 ```
 
+### Chase
+Predator/prey chase animation with collision detection and role swapping.
+
+**Single-group mode:**
+```ini
+on_bored: chase
+```
+
+**Multi-group coordination** - seamless animation across multiple strips:
+```ini
+# Format: chase <group_number>
+[lumen_group left]
+on_cooldown: chase 1
+
+[lumen_group center]
+on_cooldown: chase 2
+
+[lumen_group right]
+on_cooldown: chase 3
+```
+
+**Features:**
+- Dynamic predator/prey behavior with proximity acceleration
+- Collision detection with bounce and role swap
+- Random direction changes and speed variations
+- Respects `direction: standard` or `direction: reverse` per group
+- Configurable chase size, colors, and collision behavior
+
+**Configuration:**
+```ini
+[lumen_effect chase]
+speed: 50.0                      # Movement speed (LEDs per second)
+chase_size: 2                    # LEDs per segment
+chase_color_1: lava              # Predator color
+chase_color_2: ice               # Prey color
+chase_proximity_threshold: 0.15  # Distance for acceleration (0.0-1.0)
+chase_accel_factor: 1.5          # Speed boost when hunting/fleeing
+chase_role_swap_interval: 20     # Avg seconds between role swaps
+chase_collision_pause: 0.3       # Pause duration after collision
+```
+
+### KITT
+Knight Rider scanner effect with smooth bounce animation.
+```ini
+# Format: kitt <color>
+on_idle: kitt red
+on_bored: kitt cobalt
+```
+
+**Bed mesh tracking** - scanner follows toolhead position:
+```ini
+[lumen_effect kitt]
+kitt_tracking_axis: x    # Track X axis during printing
+# kitt_tracking_axis: y  # Track Y axis
+# kitt_tracking_axis: none  # No tracking (default)
+```
+
+**Configuration:**
+```ini
+[lumen_effect kitt]
+speed: 0.8                # Bounce speed (sweeps per second)
+base_color: red           # Scanner color
+kitt_eye_size: 3          # LEDs in bright center eye
+kitt_tail_length: 2       # Fading LEDs on each side
+kitt_tracking_axis: none  # "none", "x", or "y"
+max_brightness: 0.6
+```
+
 ### Thermal
 Temperature-based gradient (cold → hot colors as temp rises).
 ```ini
@@ -260,6 +329,44 @@ max_brightness: 1.0
 speed: 3.0                 # Color changes per second
 min_sparkle: 1             # Min LEDs lit per update
 max_sparkle: 6             # Max LEDs lit per update
+
+[lumen_effect rainbow]
+speed: 0.5                 # Cycles per second (0.5 = 2s full rainbow)
+rainbow_spread: 1.0        # Spectrum spread across strip (0.0-1.0)
+max_brightness: 0.9
+
+[lumen_effect fire]
+speed: 5.0                 # Flicker updates per second
+min_brightness: 0.1        # Dimmest flame
+max_brightness: 0.6        # Brightest flame
+fire_cooling: 0.4          # Cooling rate (0.0-1.0, higher = more chaotic)
+
+[lumen_effect comet]
+speed: 10.0                # Movement speed (LEDs per second)
+max_brightness: 0.5        # Brightness of comet head
+comet_tail_length: 4       # Length of trailing tail (in LEDs)
+comet_fade_rate: 0.9       # How quickly tail fades (0.0-1.0)
+
+[lumen_effect chase]
+speed: 50.0                      # Movement speed (LEDs per second)
+chase_size: 2                    # LEDs per segment
+chase_color_1: lava              # Predator color
+chase_color_2: ice               # Prey color
+chase_offset_base: 0.5           # Base distance between segments (single-group)
+chase_offset_variation: 0.1      # Offset variation (single-group)
+chase_proximity_threshold: 0.15  # Distance for acceleration (multi-group)
+chase_accel_factor: 1.5          # Speed boost when hunting/fleeing
+chase_role_swap_interval: 20     # Avg seconds between role swaps
+chase_collision_pause: 0.3       # Pause duration after collision
+max_brightness: 0.6
+
+[lumen_effect kitt]
+speed: 0.8                 # Bounce speed (sweeps per second)
+base_color: red            # Scanner color
+kitt_eye_size: 3           # LEDs in bright center eye
+kitt_tail_length: 2        # Fading LEDs on each side
+kitt_tracking_axis: none   # "none" | "x" | "y" (bed mesh tracking)
+max_brightness: 0.6
 
 [lumen_effect thermal]
 temp_source: extruder      # bed, extruder, chamber
@@ -442,6 +549,50 @@ pin_name: caselight_pwm
 on_idle: 0.5
 on_printing: 1.0
 on_sleep: 0.0
+```
+
+### Multi-Group Chase - Seamless Circular Animation
+
+```ini
+# Three LED strips forming a continuous ring around the printer
+# Chase groups create predator/prey animation across all strips
+
+[lumen_effect chase]
+speed: 50.0                      # Movement speed (LEDs per second)
+chase_size: 2                    # LEDs per segment
+chase_color_1: lava              # Predator color (red/orange)
+chase_color_2: ice               # Prey color (blue/white)
+chase_proximity_threshold: 0.15  # 15% of ring = "getting close"
+chase_accel_factor: 1.5          # Speed boost when hunting/fleeing
+chase_role_swap_interval: 20     # Average seconds between role swaps
+chase_collision_pause: 0.3       # Pause duration after collision
+
+[lumen_group left_strip]
+driver: proxy
+gpio_pin: 18
+index_start: 19
+index_end: 36
+direction: reverse               # Physical LEDs go 36→19 (right to left)
+on_cooldown: chase 1             # First segment in circular array
+
+[lumen_group center_strip]
+driver: proxy
+gpio_pin: 18
+index_start: 37
+index_end: 53
+direction: reverse               # Physical LEDs go 53→37
+on_cooldown: chase 2             # Second segment in circular array
+
+[lumen_group right_strip]
+driver: proxy
+gpio_pin: 18
+index_start: 1
+index_end: 18
+direction: standard              # Physical LEDs go 1→18 (left to right)
+on_cooldown: chase 3             # Third segment in circular array
+
+# Result: Seamless predator/prey chase animation that flows smoothly
+# across all three strips with collision detection and role swapping
 ```
 
 ---
