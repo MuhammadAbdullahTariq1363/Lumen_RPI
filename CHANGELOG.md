@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.1] - 2025-12-25
+
+### 🐛 Critical Bug Fixes - Macro Tracking
+
+#### Infinite Loop Console Spam
+- **Root cause**: LUMEN console messages containing macro names (e.g., "BED_MESH_CALIBRATE") triggered infinite detection loops
+- **Fix**: Added filter to ignore G-code responses starting with "LUMEN" or "// LUMEN" (lumen.py:603-605)
+- **Impact**: Prevented system lockups during bed meshing and other macros
+
+#### Malformed G-code Debug Messages
+- **Root cause**: Long debug messages with probe results caused truncated RESPOND commands
+- **Fix**: Added filter to skip probe result messages (lumen.py:607-610)
+- **Impact**: Eliminated "Malformed command" errors in Klipper logs
+
+#### Klipper Driver Timeout Spam
+- **Root cause**: Klipper's G-code queue blocks during macro execution, causing SET_LED commands to timeout every 2 seconds
+- **Fix**: Skip Klipper driver updates when macro state is active, allowing only GPIO/Proxy drivers to update (lumen.py:956-959, 1071-1075)
+- **Impact**: Eliminated timeout spam in logs, LEDs now respond correctly to macro states on GPIO-attached strips
+
+### ✨ New Features
+- **Macro timeout**: 30-second timeout prevents stuck macro states (lumen.py:584-591)
+
+### Changed
+- Version bumped from v1.4.0 to v1.4.1
+
+---
+
 ## [1.4.0] - 2025-12-25
 
 ### ⚡ Performance Optimizations
@@ -254,6 +281,7 @@ This is the first stable release. Pre-release development history available in c
 - 📝 Documentation
 - 🔧 Maintenance
 
+[1.4.1]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.1
 [1.4.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.0
 [1.3.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.3.0
 [1.2.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.2.0

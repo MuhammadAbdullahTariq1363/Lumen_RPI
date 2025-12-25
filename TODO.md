@@ -245,5 +245,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** December 25, 2025
-**Current Version:** v1.4.0 (stable)
-**Status:** v1.4.0 Stable - Production tested on Voron Trident | Performance optimizations (60 FPS driver caching, state_data pre-building, HSV utility extraction), critical bug fixes (disco bounds, thermal division by zero), and code cleanup
+**Current Version:** v1.4.1 (stable)
+**Status:** v1.4.1 Stable - Production tested on Voron Trident | Fixed critical macro tracking bugs (infinite loop console spam, Klipper driver timeout spam during macros), added 30-second macro timeout, selective driver updates during macro states

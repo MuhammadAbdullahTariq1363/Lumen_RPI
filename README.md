@@ -5,10 +5,10 @@
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.4.0-blue)]()
+[![Version](https://img.shields.io/badge/version-v1.4.1-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.4.0 Release** - Performance optimizations, critical bug fixes, and code cleanup
+> **v1.4.1 Release** - Fixed critical macro tracking bugs (infinite loop spam, Klipper driver timeout spam)
 
 ---
 

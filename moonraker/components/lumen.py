@@ -604,8 +604,10 @@ class Lumen:
         if response.startswith("LUMEN") or response.startswith("// LUMEN"):
             return
 
-        # v1.4.1: Debug - log all gcode responses to diagnose timing issue
-        self._log_debug(f"Gcode response: {response[:100]}")  # First 100 chars
+        # v1.4.1: Skip probe results and most comment lines (noise reduction)
+        # These flood the logs and don't contain macro names
+        if response.startswith("// probe at") or response.startswith("probe at"):
+            return
 
         # Convert response to uppercase for case-insensitive matching
         response_upper = response.upper()
@@ -951,6 +953,11 @@ class Lumen:
             if not driver or group_name not in group_electrical_colors:
                 continue
 
+            # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked)
+            from .lumen_lib.drivers import KlipperDriver
+            if self._active_macro_state and isinstance(driver, KlipperDriver):
+                continue
+
             group_cfg = self.led_groups.get(group_name, {})
             index_start = int(group_cfg.get('index_start', 1))
             index_end = int(group_cfg.get('index_end', 1))
@@ -1064,6 +1071,12 @@ class Lumen:
 
                     driver = self.drivers.get(group_name)
                     if not driver:
+                        continue
+
+                    # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked, causes timeout spam)
+                    from .lumen_lib.drivers import KlipperDriver
+                    if self._active_macro_state and isinstance(driver, KlipperDriver):
+                        # Don't add interval for skipped drivers
                         continue
 
                     # v1.4.0: Use cached driver interval (avoids isinstance() check in hot path)
