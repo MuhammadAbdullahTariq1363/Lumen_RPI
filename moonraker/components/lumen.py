@@ -1129,6 +1129,11 @@ class Lumen:
                 "bed_target": self.printer_state.bed_target,
                 "extruder_temp": self.printer_state.extruder_temp,
                 "extruder_target": self.printer_state.extruder_target,
+                # v1.3.0 - Chamber temperature
+                "chamber_temp": self.printer_state.chamber_temp,
+                "chamber_target": self.printer_state.chamber_target,
+                # v1.3.0 - Filament sensor (None if not installed)
+                "filament_detected": self.printer_state.filament_detected,
                 "position": {
                     "x": round(self.printer_state.position_x, 2),
                     "y": round(self.printer_state.position_y, 2),
