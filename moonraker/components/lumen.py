@@ -852,10 +852,9 @@ class Lumen:
                 color = group_electrical_colors[group_name].get(electrical_idx)
                 electrical_colors.append(color)
 
-            # DISABLED FOR DEBUGGING: Test chase flow without direction reversal
-            # This will make chase flow: electrical 1→18, 37→53, 19→36
-            # if direction == 'reverse':
-            #     electrical_colors = list(reversed(electrical_colors))
+            # Note: No direction reversal needed here
+            # The circular array was already built with direction in mind
+            # (see lines 771-778 where we add indices in reverse order if direction='reverse')
 
             # Send to driver
             try:
