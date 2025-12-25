@@ -90,9 +90,9 @@ class PrinterState:
             if "target" in ex:
                 self.extruder_target = ex.get("target", 0.0) or 0.0
 
-        # v1.3.0 - Chamber temperature (temperature_sensor chamber)
-        if "temperature_sensor chamber" in status:
-            chamber = status["temperature_sensor chamber"]
+        # v1.3.0 - Chamber temperature (temperature_sensor chamber_temp)
+        if "temperature_sensor chamber_temp" in status:
+            chamber = status["temperature_sensor chamber_temp"]
             if "temperature" in chamber:
                 self.chamber_temp = chamber.get("temperature", 0.0) or 0.0
             # Note: temperature_sensor doesn't have targets, only monitored temp

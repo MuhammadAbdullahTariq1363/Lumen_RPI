@@ -497,7 +497,7 @@ class Lumen:
                 "idle_timeout": ["state"],
                 "toolhead": ["position"],
                 # v1.3.0 - Optional sensors (graceful if not present)
-                "temperature_sensor chamber": ["temperature"],
+                "temperature_sensor chamber_temp": ["temperature"],
                 "filament_switch_sensor filament_sensor": ["filament_detected"],
             })
 
@@ -511,7 +511,7 @@ class Lumen:
                 "idle_timeout": ["state"],
                 "toolhead": ["position"],
                 # v1.3.0 - Optional sensors
-                "temperature_sensor chamber": ["temperature"],
+                "temperature_sensor chamber_temp": ["temperature"],
                 "filament_switch_sensor filament_sensor": ["filament_detected"],
             })
             if result:
