@@ -106,10 +106,6 @@ Production-ready LED control for Klipper printers. Tested on Voron Trident with 
 - Klipper driver slower during prints (G-code queue bottleneck) - expected behavior
 - GPIO 19 conflicts with audio on Raspberry Pi (use GPIO 18 instead)
 
-**Upgrade Path:**
-- v1.1.0 will add: paused, homing, meshing, leveling, probing states
-- v1.2.0 will add: rainbow, fire, comet, chase, alert, wipe effects
-- v1.3.0 will add: chamber temp, filament sensors, Z-height gradients
 
 ---
 

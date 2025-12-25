@@ -39,19 +39,38 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎯 v1.2.0 - Additional Printer States
+## 🎯 v1.2.0 - Additional Printer States (In Development)
 
 ### New States to Detect
-- [ ] **Paused** - Print paused by user or M600
 - [ ] **Homing** - G28 in progress
 - [ ] **Meshing** - BED_MESH_CALIBRATE running
 - [ ] **Leveling** - QUAD_GANTRY_LEVEL or Z_TILT_ADJUST running
 - [ ] **Probing** - PROBE_CALIBRATE or similar
+- [ ] **Paused** - Print paused by user or PAUSE macro
+- [ ] **Cancelled** - Print cancelled by CANCEL_PRINT macro
+- [ ] **Filament Change** - Filament load/unload/runout (M600, etc.)
 
-**Implementation Notes:**
-- Subscribe to `toolhead` object for `homing_origin` tracking
-- Track macro execution for QGL/Z_TILT/BED_MESH
-- Add state transition logic in state.py
+**Implementation Approach:**
+- User-configurable macro tracking in `[lumen_settings]`
+  ```ini
+  macro_homing: G28
+  macro_meshing: BED_MESH_CALIBRATE
+  macro_leveling: QUAD_GANTRY_LEVEL, Z_TILT_ADJUST
+  macro_probing: PROBE_CALIBRATE
+  macro_paused: PAUSE
+  macro_cancelled: CANCEL_PRINT
+  macro_filament: M600, FILAMENT_RUNOUT, LOAD_FILAMENT, UNLOAD_FILAMENT
+  ```
+- Subscribe to `notify_gcode_response` via Moonraker websocket
+- Parse G-code responses for configured macro names
+- Set appropriate state when macro detected
+- Return to normal state cycle when macro completes
+
+**Benefits:**
+- Universal compatibility with any printer's custom macros
+- User has full control over which macros trigger which states
+- No need to hardcode macro names or maintain compatibility lists
+- Simple implementation using existing Moonraker infrastructure
 
 ---
 

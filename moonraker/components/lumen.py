@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.2.0-dev"
 
 import asyncio
 import json
@@ -72,7 +72,18 @@ class Lumen:
         self.bed_x_max = 300.0
         self.bed_y_min = 0.0
         self.bed_y_max = 300.0
-        
+
+        # Macro tracking for state detection (v1.2.0)
+        self.macro_homing: List[str] = []
+        self.macro_meshing: List[str] = []
+        self.macro_leveling: List[str] = []
+        self.macro_probing: List[str] = []
+        self.macro_paused: List[str] = []
+        self.macro_cancelled: List[str] = []
+        self.macro_filament: List[str] = []
+        self._active_macro_state: Optional[str] = None  # Current macro-triggered state
+        self._macro_start_time: float = 0.0
+
         # LED groups, drivers, effects
         self.led_groups: Dict[str, Dict[str, Any]] = {}
         self.event_mappings: Dict[str, List[Dict[str, str]]] = {}
@@ -116,6 +127,7 @@ class Lumen:
         self.server.register_event_handler("server:klippy_shutdown", self._on_klippy_shutdown)
         self.server.register_event_handler("server:klippy_disconnected", self._on_klippy_disconnected)
         self.server.register_event_handler("server:status_update", self._on_status_update)
+        self.server.register_event_handler("server:gcode_response", self._on_gcode_response)
         self.server.register_event_handler("server:exit", self._on_server_shutdown)
         self.state_detector.add_listener(self._on_event_change)
         
@@ -336,6 +348,14 @@ class Lumen:
                 self.bed_x_max = float(data.get("bed_x_max", self.bed_x_max))
                 self.bed_y_min = float(data.get("bed_y_min", self.bed_y_min))
                 self.bed_y_max = float(data.get("bed_y_max", self.bed_y_max))
+                # Macro tracking (v1.2.0) - comma-separated lists
+                self.macro_homing = self._parse_macro_list(data.get("macro_homing", ""))
+                self.macro_meshing = self._parse_macro_list(data.get("macro_meshing", ""))
+                self.macro_leveling = self._parse_macro_list(data.get("macro_leveling", ""))
+                self.macro_probing = self._parse_macro_list(data.get("macro_probing", ""))
+                self.macro_paused = self._parse_macro_list(data.get("macro_paused", ""))
+                self.macro_cancelled = self._parse_macro_list(data.get("macro_cancelled", ""))
+                self.macro_filament = self._parse_macro_list(data.get("macro_filament", ""))
             
             elif section_type == "lumen_effect" and section_name:
                 self.effect_settings[section_name] = data.copy()
@@ -368,7 +388,15 @@ class Lumen:
         except Exception as e:
             loc = f" (line {line_num})" if line_num else ""
             self._log_error(f"Error in section [{section}]{loc}: {e}")
-    
+
+    def _parse_macro_list(self, value: str) -> List[str]:
+        """Parse comma-separated macro list and return uppercase list."""
+        if not value or not value.strip():
+            return []
+        # Split by comma, strip whitespace, convert to uppercase, filter empties
+        macros = [m.strip().upper() for m in value.split(",")]
+        return [m for m in macros if m]
+
     def _parse_effect_color(self, value: str) -> Dict[str, Any]:
         """Parse effect specification with optional inline parameters.
 
@@ -531,7 +559,47 @@ class Lumen:
         if new_event:
             task = asyncio.create_task(self._apply_event(new_event))
             task.add_done_callback(self._task_exception_handler)
-    
+
+    async def _on_gcode_response(self, response: str) -> None:
+        """Handle G-code responses to detect macro execution (v1.2.0)."""
+        if not self.klippy_ready:
+            return
+
+        # Convert response to uppercase for case-insensitive matching
+        response_upper = response.upper()
+
+        # Check each macro type
+        macro_map = {
+            "homing": self.macro_homing,
+            "meshing": self.macro_meshing,
+            "leveling": self.macro_leveling,
+            "probing": self.macro_probing,
+            "paused": self.macro_paused,
+            "cancelled": self.macro_cancelled,
+            "filament": self.macro_filament,
+        }
+
+        for state_name, macro_list in macro_map.items():
+            if not macro_list:
+                continue
+
+            for macro in macro_list:
+                if macro in response_upper:
+                    # Macro detected - activate macro state
+                    self._active_macro_state = state_name
+                    self._macro_start_time = time.time()
+                    # Update PrinterState with macro info
+                    self.printer_state.active_macro_state = state_name
+                    self.printer_state.macro_start_time = self._macro_start_time
+                    self._log_debug(f"Macro detected: {macro} → state: {state_name}")
+
+                    # Force state detector to re-evaluate with macro state active
+                    new_event = self.state_detector.update(self.printer_state)
+                    if new_event:
+                        task = asyncio.create_task(self._apply_event(new_event))
+                        task.add_done_callback(self._task_exception_handler)
+                    break
+
     def _on_event_change(self, event: PrinterEvent) -> None:
         """Called when printer event changes."""
         self._log_debug(f"Event: {event.value}")

@@ -19,6 +19,14 @@ class PrinterEvent(Enum):
     ERROR = "error"
     BORED = "bored"
     SLEEP = "sleep"
+    # v1.2.0 - Macro-triggered states
+    HOMING = "homing"
+    MESHING = "meshing"
+    LEVELING = "leveling"
+    PROBING = "probing"
+    PAUSED = "paused"
+    CANCELLED = "cancelled"
+    FILAMENT = "filament"
 
 
 @dataclass
@@ -28,17 +36,21 @@ class PrinterState:
     print_state: str = "standby"
     progress: float = 0.0
     filename: str = ""
-    
+
     bed_temp: float = 0.0
     bed_target: float = 0.0
     extruder_temp: float = 0.0
     extruder_target: float = 0.0
-    
+
     position_x: float = 0.0
     position_y: float = 0.0
     position_z: float = 0.0
-    
+
     idle_state: str = "Ready"
+
+    # v1.2.0 - Macro-triggered state tracking
+    active_macro_state: Optional[str] = None  # homing, meshing, leveling, probing, paused, cancelled, filament
+    macro_start_time: float = 0.0
     
     def update_from_status(self, status: Dict[str, Any]) -> None:
         """Update state from Moonraker status update."""
@@ -208,6 +220,9 @@ class StateDetector:
             'last_state': self._current_event.value,
             'state_enter_time': self._state_enter_time,
             'current_time': now,
+            # v1.2.0 - Macro state tracking
+            'active_macro_state': state.active_macro_state,
+            'macro_start_time': state.macro_start_time,
         }
 
         # Check detectors in priority order (error first, idle last)
