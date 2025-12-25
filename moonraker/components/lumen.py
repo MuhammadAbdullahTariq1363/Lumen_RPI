@@ -980,7 +980,6 @@ class Lumen:
                 continue
 
             # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked)
-            from .lumen_lib.drivers import KlipperDriver
             if self._active_macro_state and isinstance(driver, KlipperDriver):
                 continue
 
@@ -1100,7 +1099,6 @@ class Lumen:
                         continue
 
                     # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked, causes timeout spam)
-                    from .lumen_lib.drivers import KlipperDriver
                     if self._active_macro_state:
                         driver_type = type(driver).__name__
                         is_klipper = isinstance(driver, KlipperDriver)
