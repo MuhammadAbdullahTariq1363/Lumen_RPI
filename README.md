@@ -5,24 +5,47 @@
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.1.5-blue)]()
+[![Version](https://img.shields.io/badge/version-v1.4.0-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.1.5 Release** - Multi-group chase coordination and KITT scanner effect with bed mesh tracking
+> **v1.4.0 Release** - Performance optimizations, critical bug fixes, and code cleanup
 
 ---
 
 ## Features
 
-- **7 Printer States** - Automatic detection: idle, heating, printing, cooldown, error, bored, sleep
+- **14 Printer States** - Automatic detection: idle, heating, printing, cooldown, error, bored, sleep, homing, meshing, leveling, probing, paused, cancelled, filament change
 - **12 LED Effects** - solid, pulse, heartbeat, disco, rainbow, fire, comet, chase, KITT scanner, thermal gradient, print progress bar, off
 - **Multi-Group Coordination** - Seamless animations across multiple LED strips with predator/prey chase behavior
 - **3 Driver Types** - GPIO (60fps smooth), Klipper SET_LED (MCU-attached), PWM (non-addressable)
+- **Chamber Temperature Support** - Thermal effect now supports bed, extruder, and chamber temperature sources
+- **Filament Sensor Integration** - Automatic runout detection triggers filament change state
 - **Modular Architecture** - Plugin-based effect and state systems for easy extension
 - **50+ Named Colors** - Aurora-compatible color palette
 - **Hot Reload** - Update config without restarting Moonraker
 - **Full API** - REST endpoints for status, testing, and control
-- **Production Ready** - Comprehensive testing on Voron Trident with multi-group animations
+- **Production Ready** - Comprehensive testing on Voron Trident with multi-group animations and optimized performance
+
+---
+
+## What's New in v1.4.0
+
+### Performance Optimizations
+- **60 FPS driver interval caching** - Eliminated 240-300 `isinstance()` checks per second
+- **State data pre-building** - 93% reduction in dictionary operations per animation cycle
+- **Loop attribute caching** - Cached repeated lookups in chase, kitt, and fire effects
+- **Disco random selection** - Optimized from O(n log n) to O(k) algorithm
+- **HSV utility extraction** - Eliminated ~90 lines of duplicated color conversion code
+
+### Critical Bug Fixes
+- **Disco effect crash fix** - Added bounds validation to prevent `ValueError` when `min_sparkle > max_sparkle`
+- **Thermal effect safety** - Added division by zero protection for edge cases
+
+### Code Cleanup
+- Removed unused imports, dead telemetry code, and unused PWMDriver methods
+- Added error logging to silent exception handlers for better debugging
+
+See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
 ---
 

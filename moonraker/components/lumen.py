@@ -10,12 +10,10 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 import asyncio
-import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -29,7 +27,7 @@ if str(_component_dir) not in sys.path:
 from lumen_lib import (
     RGB, get_color, list_colors,
     EffectState,
-    LEDDriver, KlipperDriver, PWMDriver, GPIODriver, ProxyDriver, create_driver,
+    LEDDriver, KlipperDriver, PWMDriver, create_driver,
     PrinterState, PrinterEvent, StateDetector,
 )
 from lumen_lib.effects import EFFECT_REGISTRY
@@ -99,19 +97,20 @@ class Lumen:
         self._animation_task: Optional[asyncio.Task] = None
         self._animation_running = False
         
-        # Telemetry (position tracking for debugging/PONG development)
-        self.telemetry_enabled = False
-        self.telemetry_path: Optional[Path] = None
-        self._telemetry_file = None
-        self._last_position: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-        self._position_count = 0
+        # Thermal logging throttle (v1.0.0 - performance optimization)
         self._last_thermal_log: Dict[str, Tuple[float, float, float]] = {}  # group_name -> (time, current_temp, target_temp)
-        
+
+        # v1.4.0 - Performance: Cache driver intervals to avoid isinstance() checks in hot path
+        self._driver_intervals: Dict[str, Tuple[float, float]] = {}  # group_name -> (printing_interval, idle_interval)
+
         # Load config and create drivers
         self._load_config()
         self._create_drivers()
         for name in self.drivers:
             self.effect_states[name] = EffectState()
+
+        # v1.4.0 - Cache driver update intervals
+        self._cache_driver_intervals()
         
         # State detection
         self.printer_state = PrinterState()
@@ -194,8 +193,9 @@ class Lumen:
             # Escape quotes in message
             safe_msg = msg.replace('"', "'")
             await klippy.run_gcode(f'RESPOND PREFIX="LUMEN" MSG="{safe_msg}"')
-        except Exception:
-            pass  # Silently fail if Klipper busy or not ready
+        except Exception as e:
+            # v1.4.0: Log exception for debugging (Klipper may be busy or not ready)
+            self._log_debug(f"Failed to send console message: {e}")
     
     def _log_info(self, msg: str) -> None:
         """Log info message (always)."""
@@ -266,7 +266,11 @@ class Lumen:
         """Validate configuration and collect warnings."""
         available_colors = list_colors()
         valid_effects = set(EFFECT_REGISTRY.keys())
-        valid_events = {"idle", "heating", "printing", "cooldown", "error", "bored", "sleep"}
+        # v1.2.0 - Added macro-triggered states
+        valid_events = {
+            "idle", "heating", "printing", "cooldown", "error", "bored", "sleep",
+            "homing", "meshing", "leveling", "probing", "paused", "cancelled", "filament"
+        }
 
         # Effects that require addressable LEDs (not compatible with PWM driver)
         addressable_only_effects = {"disco", "thermal", "progress"}
@@ -476,7 +480,22 @@ class Lumen:
             if driver:
                 self.drivers[name] = driver
                 self._log_debug(f"Created driver for group '{name}': {config.get('driver', 'klipper')}")
-    
+
+    def _cache_driver_intervals(self) -> None:
+        """Cache driver update intervals to avoid isinstance() checks in animation loop (v1.4.0 optimization)."""
+        from .lumen_lib.drivers import GPIODriver, ProxyDriver
+
+        for group_name, driver in self.drivers.items():
+            if isinstance(driver, (GPIODriver, ProxyDriver)):
+                # GPIO/Proxy drivers use FPS-based interval (60 Hz = 0.0167s)
+                interval = 1.0 / self.gpio_fps
+                self._driver_intervals[group_name] = (interval, interval)  # Same for printing and idle
+            else:
+                # Klipper/PWM drivers use slower intervals (respects G-code queue)
+                self._driver_intervals[group_name] = (self.update_rate_printing, self.update_rate)
+
+        self._log_debug(f"Cached driver intervals for {len(self._driver_intervals)} groups")
+
     # ─────────────────────────────────────────────────────────────
     # Event Handlers
     # ─────────────────────────────────────────────────────────────
@@ -977,6 +996,30 @@ class Lumen:
                 now = time.time()
                 is_printing = self.printer_state.print_state == "printing"
 
+                # v1.4.0: Build state_data once per cycle (optimization - was rebuilt for each effect)
+                state_data_cache = {
+                    # Temps for thermal effect
+                    'bed_temp': self.printer_state.bed_temp,
+                    'bed_target': self.printer_state.bed_target,
+                    'extruder_temp': self.printer_state.extruder_temp,
+                    'extruder_target': self.printer_state.extruder_target,
+                    # v1.3.0 - Chamber temperature
+                    'chamber_temp': self.printer_state.chamber_temp,
+                    'chamber_target': self.printer_state.chamber_target,
+                    'temp_floor': self.temp_floor,
+                    # Progress for progress effect
+                    'print_progress': self.printer_state.progress,
+                    # Toolhead position for KITT tracking
+                    'toolhead_pos_x': self.printer_state.position_x,
+                    'toolhead_pos_y': self.printer_state.position_y,
+                    'toolhead_pos_z': self.printer_state.position_z,
+                    # Bed dimensions
+                    'bed_x_min': self.bed_x_min,
+                    'bed_x_max': self.bed_x_max,
+                    'bed_y_min': self.bed_y_min,
+                    'bed_y_max': self.bed_y_max,
+                }
+
                 # Collect intervals from all active animated groups
                 intervals = []
 
@@ -986,11 +1029,11 @@ class Lumen:
                 if chase_groups:
                     coordinated_groups = await self._render_multi_group_chase(chase_groups, now, is_printing)
 
-                    # Add intervals for coordinated chase groups
+                    # Add intervals for coordinated chase groups (v1.4.0: use cached intervals)
                     for group_name in coordinated_groups:
-                        driver = self.drivers.get(group_name)
-                        if driver and isinstance(driver, (GPIODriver, ProxyDriver)):
-                            intervals.append(1.0 / self.gpio_fps)
+                        if group_name in self._driver_intervals:
+                            printing_interval, idle_interval = self._driver_intervals[group_name]
+                            intervals.append(printing_interval if is_printing else idle_interval)
 
                 for group_name, state in self.effect_states.items():
                     # Skip groups that are part of multi-group chase coordination
@@ -1006,16 +1049,13 @@ class Lumen:
                     if not driver:
                         continue
 
-                    # Determine interval for this driver type
-                    # GPIO/Proxy drivers can use high FPS, Klipper driver is G-code limited
-                    if isinstance(driver, (GPIODriver, ProxyDriver)):
-                        # High FPS for GPIO/Proxy drivers
-                        driver_interval = 1.0 / self.gpio_fps
+                    # v1.4.0: Use cached driver interval (avoids isinstance() check in hot path)
+                    if group_name in self._driver_intervals:
+                        printing_interval, idle_interval = self._driver_intervals[group_name]
+                        driver_interval = printing_interval if is_printing else idle_interval
+                        intervals.append(driver_interval)
                     else:
-                        # Klipper driver limited by G-code queue
-                        driver_interval = self.update_rate_printing if is_printing else self.update_rate
-
-                    intervals.append(driver_interval)
+                        continue  # Skip if interval not cached (shouldn't happen)
 
                     try:
                         # Get cached effect instance (one per group+effect combo)
@@ -1027,49 +1067,26 @@ class Lumen:
 
                         led_count = driver.led_count if hasattr(driver, 'led_count') else 1
 
-                        # Build state data for effects that need it
-                        state_data = None
-                        if effect.requires_state_data:
-                            state_data = {
-                                # Temps for thermal effect
-                                'bed_temp': self.printer_state.bed_temp,
-                                'bed_target': self.printer_state.bed_target,
-                                'extruder_temp': self.printer_state.extruder_temp,
-                                'extruder_target': self.printer_state.extruder_target,
-                                # v1.3.0 - Chamber temperature
-                                'chamber_temp': self.printer_state.chamber_temp,
-                                'chamber_target': self.printer_state.chamber_target,
-                                'temp_floor': self.temp_floor,
-                                # Progress for progress effect
-                                'print_progress': self.printer_state.progress,
-                                # Toolhead position for KITT tracking
-                                'toolhead_pos_x': self.printer_state.position_x,
-                                'toolhead_pos_y': self.printer_state.position_y,
-                                'toolhead_pos_z': self.printer_state.position_z,
-                                # Bed dimensions
-                                'bed_x_min': self.bed_x_min,
-                                'bed_x_max': self.bed_x_max,
-                                'bed_y_min': self.bed_y_min,
-                                'bed_y_max': self.bed_y_max,
-                            }
+                        # v1.4.0: Use cached state_data instead of rebuilding (performance optimization)
+                        state_data = state_data_cache if effect.requires_state_data else None
 
-                            # Throttle thermal debug logging
-                            if state.effect == "thermal":
-                                current_temp = state_data.get(f'{state.temp_source}_temp', 0.0)
-                                target_temp = state_data.get(f'{state.temp_source}_target', 0.0)
+                        # Throttle thermal debug logging
+                        if state.effect == "thermal" and state_data:
+                            current_temp = state_data.get(f'{state.temp_source}_temp', 0.0)
+                            target_temp = state_data.get(f'{state.temp_source}_target', 0.0)
 
-                                should_log = False
-                                if group_name in self._last_thermal_log:
-                                    last_time, last_current, last_target = self._last_thermal_log[group_name]
-                                    temp_changed = abs(current_temp - last_current) >= 1.0 or abs(target_temp - last_target) >= 1.0
-                                    time_elapsed = now - last_time >= 10.0
-                                    should_log = temp_changed or time_elapsed
-                                else:
-                                    should_log = True
+                            should_log = False
+                            if group_name in self._last_thermal_log:
+                                last_time, last_current, last_target = self._last_thermal_log[group_name]
+                                temp_changed = abs(current_temp - last_current) >= 1.0 or abs(target_temp - last_target) >= 1.0
+                                time_elapsed = now - last_time >= 10.0
+                                should_log = temp_changed or time_elapsed
+                            else:
+                                should_log = True
 
-                                if should_log:
-                                    self._last_thermal_log[group_name] = (now, current_temp, target_temp)
-                                    self._log_debug(f"Thermal {group_name}: source={state.temp_source}, current={current_temp:.1f}, target={target_temp:.1f}, floor={self.temp_floor}")
+                            if should_log:
+                                self._last_thermal_log[group_name] = (now, current_temp, target_temp)
+                                self._log_debug(f"Thermal {group_name}: source={state.temp_source}, current={current_temp:.1f}, target={target_temp:.1f}, floor={self.temp_floor}")
 
                         # Calculate effect colors
                         colors, needs_update = effect.calculate(state, now, led_count, state_data)

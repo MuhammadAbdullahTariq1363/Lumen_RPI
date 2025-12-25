@@ -2,13 +2,13 @@
 LUMEN Library - Modular LED control for Klipper printers
 """
 
-from .colors import COLORS, RGB, get_color, list_colors
+from .colors import COLORS, RGB, get_color, list_colors, hsv_to_rgb
 from .effects import EffectState
 from .drivers import LEDDriver, KlipperDriver, PWMDriver, GPIODriver, ProxyDriver, create_driver
 from .state import PrinterState, PrinterEvent, StateDetector
 
 __all__ = [
-    "COLORS", "RGB", "get_color", "list_colors",
+    "COLORS", "RGB", "get_color", "list_colors", "hsv_to_rgb",
     "EffectState",
     "LEDDriver", "KlipperDriver", "PWMDriver", "GPIODriver", "ProxyDriver", "create_driver",
     "PrinterState", "PrinterEvent", "StateDetector",

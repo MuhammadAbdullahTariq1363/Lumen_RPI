@@ -144,12 +144,6 @@ class PWMDriver(LEDDriver):
     
     async def set_off(self) -> None:
         await self.set_brightness(0.0)
-    
-    async def set_on(self) -> None:
-        await self.set_brightness(1.0)
-    
-    async def set_dim(self, level: float = 0.3) -> None:
-        await self.set_brightness(level)
 
 
 class GPIODriver(LEDDriver):
@@ -219,8 +213,9 @@ class GPIODriver(LEDDriver):
                             try:
                                 color = old_strip.getPixelColor(i)
                                 new_strip.setPixelColor(i, color)
-                            except Exception:
-                                pass  # Ignore errors copying individual pixels
+                            except Exception as e:
+                                # v1.4.0: Log exception for debugging
+                                _logger.debug(f"[LUMEN] Failed to copy LED {i} state during strip expansion: {e}")
 
                         # Replace with new expanded strip
                         _gpio_strips[self.gpio_pin] = new_strip

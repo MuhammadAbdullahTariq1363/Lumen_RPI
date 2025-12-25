@@ -5,7 +5,7 @@ Disco Effect - Random rainbow sparkles
 import random
 from typing import List, Optional, Tuple
 from .base import BaseEffect
-from ..colors import RGB
+from ..colors import RGB, hsv_to_rgb
 from ..effects import EffectState
 
 
@@ -46,36 +46,21 @@ class DiscoEffect(BaseEffect):
         # at slow update rates (< 1 Hz)
         random.seed(int(now * 1000000))
 
-        min_lit = min(state.min_sparkle, led_count)
-        max_lit = min(state.max_sparkle, led_count)
+        # v1.4.0: Critical - Ensure min_lit <= max_lit to prevent ValueError
+        min_lit = max(1, min(state.min_sparkle, led_count))
+        max_lit = max(min_lit, min(state.max_sparkle, led_count))
         num_lit = random.randint(min_lit, max_lit)
 
-        all_indices = list(range(led_count))
-        random.shuffle(all_indices)
-        lit_indices = set(all_indices[:num_lit])
+        # v1.4.0: Optimized random selection - O(k) instead of O(n log n)
+        lit_indices = set(random.sample(range(led_count), num_lit))
 
         colors: List[Optional[RGB]] = []
         for i in range(led_count):
             if i in lit_indices:
-                # Generate random HSV color
+                # v1.4.0: Generate random rainbow color using shared HSV→RGB utility
                 hue = random.random()
-                h = hue * 6
-                c = state.max_brightness
-                x = c * (1 - abs(h % 2 - 1))
-
-                if h < 1:
-                    r, g, b = c, x, 0
-                elif h < 2:
-                    r, g, b = x, c, 0
-                elif h < 3:
-                    r, g, b = 0, c, x
-                elif h < 4:
-                    r, g, b = 0, x, c
-                elif h < 5:
-                    r, g, b = x, 0, c
-                else:
-                    r, g, b = c, 0, x
-                colors.append((r, g, b))
+                rgb = hsv_to_rgb(hue, 1.0, state.max_brightness)
+                colors.append(rgb)
             else:
                 colors.append(None)  # LED off
 

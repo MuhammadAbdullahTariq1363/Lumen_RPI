@@ -92,6 +92,11 @@ class ChaseEffect(BaseEffect):
 
         colors: List[Optional[RGB]] = []
 
+        # v1.4.0: Cache color*brightness calculations (avoid repeated lookups in loop)
+        max_bright = state.max_brightness
+        color_1_bright = tuple(c * max_bright for c in state.chase_color_1)
+        color_2_bright = tuple(c * max_bright for c in state.chase_color_2)
+
         for i in range(led_count):
             # Check if LED is in segment 1
             in_segment_1 = self._in_segment(i, position_1, state.chase_size, led_count)
@@ -99,13 +104,9 @@ class ChaseEffect(BaseEffect):
             in_segment_2 = self._in_segment(i, position_2, state.chase_size, led_count)
 
             if in_segment_1:
-                # Apply brightness to color 1
-                r, g, b = state.chase_color_1
-                colors.append((r * state.max_brightness, g * state.max_brightness, b * state.max_brightness))
+                colors.append(color_1_bright)
             elif in_segment_2:
-                # Apply brightness to color 2
-                r, g, b = state.chase_color_2
-                colors.append((r * state.max_brightness, g * state.max_brightness, b * state.max_brightness))
+                colors.append(color_2_bright)
             else:
                 # LED off
                 colors.append(None)
@@ -210,16 +211,19 @@ class ChaseEffect(BaseEffect):
             predator_color = state.chase_color_2
             prey_color = state.chase_color_1
 
+        # v1.4.0: Cache color*brightness calculations
+        max_bright = state.max_brightness
+        predator_bright = tuple(c * max_bright for c in predator_color)
+        prey_bright = tuple(c * max_bright for c in prey_color)
+
         for i in range(total_leds):
             in_predator = self._in_segment(i, self._predator_pos, state.chase_size, total_leds)
             in_prey = self._in_segment(i, self._prey_pos, state.chase_size, total_leds)
 
             if in_predator:
-                r, g, b = predator_color
-                colors.append((r * state.max_brightness, g * state.max_brightness, b * state.max_brightness))
+                colors.append(predator_bright)
             elif in_prey:
-                r, g, b = prey_color
-                colors.append((r * state.max_brightness, g * state.max_brightness, b * state.max_brightness))
+                colors.append(prey_bright)
             else:
                 colors.append(None)
 

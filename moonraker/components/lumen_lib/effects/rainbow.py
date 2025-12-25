@@ -5,7 +5,7 @@ Rainbow Effect - Cycling rainbow animation
 import math
 from typing import List, Optional, Tuple
 from .base import BaseEffect
-from ..colors import RGB
+from ..colors import RGB, hsv_to_rgb
 from ..effects import EffectState
 
 
@@ -54,40 +54,8 @@ class RainbowEffect(BaseEffect):
 
             hue = (base_hue + hue_offset) % 1.0
 
-            # Convert HSV to RGB (S=1.0, V=max_brightness)
-            rgb = self._hsv_to_rgb(hue, 1.0, state.max_brightness)
+            # v1.4.0: Use shared HSV→RGB utility (eliminates duplication)
+            rgb = hsv_to_rgb(hue, 1.0, state.max_brightness)
             colors.append(rgb)
 
         return colors, True
-
-    @staticmethod
-    def _hsv_to_rgb(h: float, s: float, v: float) -> RGB:
-        """
-        Convert HSV to RGB.
-
-        Args:
-            h: Hue (0.0-1.0)
-            s: Saturation (0.0-1.0)
-            v: Value/brightness (0.0-1.0)
-
-        Returns:
-            RGB tuple (0.0-1.0 per channel)
-        """
-        h = h * 6.0  # Scale hue to 0-6
-        c = v * s    # Chroma
-        x = c * (1 - abs(h % 2 - 1))
-
-        if h < 1:
-            r, g, b = c, x, 0
-        elif h < 2:
-            r, g, b = x, c, 0
-        elif h < 3:
-            r, g, b = 0, c, x
-        elif h < 4:
-            r, g, b = 0, x, c
-        elif h < 5:
-            r, g, b = x, 0, c
-        else:
-            r, g, b = c, 0, x
-
-        return (r, g, b)

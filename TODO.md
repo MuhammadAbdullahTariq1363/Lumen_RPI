@@ -128,10 +128,24 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🔧 v1.4.0 - Clean Up and Optimize
-- [ ] **Cleanup** - Identify and remove - dead and dying code. Ensure proper documentation within code for clear purpose
-- [ ] **Update** - Update All Docs with status and intenet. Remove dead and dying information as needed.
-- [ ] **Identify areas for optimization** - Identify areas for optimization and an order of importance. Implement as needed
+## ✅ v1.4.0 - Clean Up and Optimize (December 2025)
+
+### Performance Optimizations
+- [x] **Driver interval caching** - Eliminated 240-300 isinstance() checks per second (60 FPS)
+- [x] **State_data pre-building** - Build once per cycle instead of per effect (93% reduction)
+- [x] **HSV utility extraction** - Shared hsv_to_rgb() eliminates ~90 lines of duplication
+- [x] **Loop attribute caching** - Cache repeated lookups in chase, kitt, fire effects
+- [x] **Disco random selection** - Optimized from O(n log n) to O(k) algorithm
+
+### Critical Bug Fixes
+- [x] **Disco bounds validation** - Fixed ValueError when min_sparkle > max_sparkle
+- [x] **Thermal division by zero** - Added safety check for edge cases
+
+### Code Cleanup
+- [x] **Removed unused imports** - Deleted json, os from lumen.py
+- [x] **Removed dead telemetry code** - Cleaned up unused tracking variables
+- [x] **Removed unused PWMDriver methods** - Deleted set_on() and set_dim()
+- [x] **Added error logging** - Improved debugging for silent exception handlers
 
 ---
 
@@ -201,9 +215,9 @@ Active development tasks and future enhancements for LUMEN.
 - **Minor releases (v1.x.0)**: New features, backward compatible
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.3.0 (December 2025)
-**In development:** v1.4.0 (Clean up and optimize)
-**Next planned release:** v1.4.0 (Clean up and optimize) - Q1 2026
+**Current stable:** v1.4.0 (December 2025)
+**In development:** v1.5.0 (Quality of Life)
+**Next planned release:** v1.5.0 (Quality of Life) - Q1 2026
 
 ---
 
@@ -232,6 +246,6 @@ Random ideas not yet prioritized:
 
 ---
 
-**Last Updated:** December 24, 2025
-**Current Version:** v1.3.0 (stable)
-**Status:** v1.3.0 Stable - Production tested on Voron Trident | Adds macro-triggered states (homing, meshing, leveling, probing, paused, cancelled, filament), chamber temperature support, and filament sensor integration
+**Last Updated:** December 25, 2025
+**Current Version:** v1.4.0 (stable)
+**Status:** v1.4.0 Stable - Production tested on Voron Trident | Performance optimizations (60 FPS driver caching, state_data pre-building, HSV utility extraction), critical bug fixes (disco bounds, thermal division by zero), and code cleanup

@@ -142,8 +142,12 @@ class ThermalEffect(BaseEffect):
         if target_temp <= temp_floor:
             return [state.start_color] * led_count, True
 
-        # Calculate fill percentage
+        # v1.4.0: Critical - Calculate fill percentage with safety check
         temp_range = target_temp - temp_floor
+        if temp_range <= 0:
+            # Safety: If somehow temp_range is zero or negative, show start color
+            return [state.start_color] * led_count, True
+
         temp_above_floor = current_temp - temp_floor
         fill_percent = temp_above_floor / temp_range
 

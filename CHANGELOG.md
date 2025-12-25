@@ -7,6 +7,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2025-12-25
+
+### ⚡ Performance Optimizations
+
+#### Hot Path Improvements
+- **Driver interval caching**: Eliminated 240-300 `isinstance()` checks per second at 60 FPS by pre-caching driver intervals during initialization
+- **State_data pre-building**: Build printer state data once per animation cycle instead of rebuilding for each effect (93% reduction in dictionary operations)
+- **Loop attribute caching**: Cache repeated attribute lookups in chase, kitt, and fire effects before entering render loops
+- **Disco random selection**: Optimized LED selection from O(n log n) sort-based approach to O(k) `random.sample()` algorithm
+
+#### Code Deduplication
+- **HSV utility extraction**: Created shared `hsv_to_rgb()` function in `colors.py`, eliminating ~90 lines of duplicated HSV→RGB conversion code across rainbow, fire, and disco effects
+
+### 🐛 Critical Bug Fixes
+- **Disco bounds validation**: Fixed `ValueError` crash when `min_sparkle > max_sparkle` by ensuring min ≤ max before calling `random.randint()`
+- **Thermal division by zero**: Added safety check to prevent division by zero when `temp_range ≤ 0` in edge cases
+
+### 🔧 Code Cleanup
+- **Removed unused imports**: Deleted unused `json` and `os` imports from `lumen.py`
+- **Removed dead telemetry code**: Cleaned up unused tracking variables from early development
+- **Removed unused PWMDriver methods**: Deleted `set_on()` and `set_dim()` methods (only `set_brightness()` and `set_off()` are used)
+- **Added error logging**: Improved debugging by logging exceptions in previously silent exception handlers
+
+### Changed
+- Version bumped from v1.3.0 to v1.4.0
+
+---
+
+## [1.3.0] - 2025-12-24
+
+### ✨ New Features
+
+#### Temperature Sources
+- **Chamber temperature support**: Added `temp_source: chamber` option for thermal effect
+  - Subscribes to `temperature_sensor chamber_temp` if available in Klipper config
+  - Graceful fallback if chamber sensor not present
+  - Status API now includes `chamber_temp` and `chamber_target` fields
+
+#### Filament Sensor Integration
+- **Automatic filament runout detection**: Subscribes to `filament_switch_sensor filament_sensor` events
+  - Automatically triggers `on_filament` state when runout detected (`filament_detected: false`)
+  - Works alongside existing macro-triggered filament states from v1.2.0
+  - Status API includes `filament_detected` field (true/false/null if no sensor)
+
+### Fixed
+- **Config validator**: Added v1.2.0 states (homing, meshing, leveling, probing, paused, cancelled, filament) to valid_events set
+- **Chamber sensor naming**: Updated code to use `chamber_temp` instead of generic `chamber` to match common Klipper conventions
+
+---
+
+## [1.2.0] - 2025-12-23
+
+### ✨ New Printer States
+
+Added 7 new macro-triggered states with user-configurable tracking:
+
+- **Homing**: G28 in progress
+- **Meshing**: BED_MESH_CALIBRATE running
+- **Leveling**: QUAD_GANTRY_LEVEL or Z_TILT_ADJUST running
+- **Probing**: PROBE_CALIBRATE or similar
+- **Paused**: Print paused by user or PAUSE macro
+- **Cancelled**: Print cancelled by CANCEL_PRINT macro
+- **Filament Change**: Filament load/unload/runout (M600, etc.)
+
+#### Configuration
+New `[lumen_settings]` options for macro tracking:
+```ini
+macro_homing: G28
+macro_meshing: BED_MESH_CALIBRATE
+macro_leveling: QUAD_GANTRY_LEVEL, Z_TILT_ADJUST
+macro_probing: PROBE_CALIBRATE
+macro_paused: PAUSE
+macro_cancelled: CANCEL_PRINT
+macro_filament: M600, FILAMENT_RUNOUT, LOAD_FILAMENT, UNLOAD_FILAMENT
+```
+
+New `on_*` effect options for LED groups:
+- `on_homing`, `on_meshing`, `on_leveling`, `on_probing`
+- `on_paused`, `on_cancelled`, `on_filament`
+
+#### Implementation
+- Subscribes to `notify_gcode_response` via Moonraker WebSocket
+- Parses G-code responses for user-configured macro names
+- Universal compatibility with any printer's custom macros
+- Returns to normal state cycle when macro completes
+
+---
+
+## [1.1.5] - 2025-12-22
+
+### ✨ New Effects
+
+#### Chase Effect
+Multi-mode predator/prey chase animation:
+- **Single-group mode**: Two colored segments chase each other with dynamic offset variation
+- **Multi-group circular array mode**: Groups coordinate as a ring with collision detection, role swapping, and proximity acceleration
+- Configurable parameters: `chase_size`, `chase_color_1`, `chase_color_2`, `chase_offset_base`, `chase_offset_variation`, `chase_proximity_threshold`, `chase_accel_factor`, `chase_role_swap_interval`, `chase_collision_pause`
+
+#### KITT Effect
+Knight Rider-style scanner bounce:
+- Smooth back-and-forth animation with bright center "eye"
+- Configurable fading tail on both sides
+- Optional bed mesh tracking: follows X or Y axis position during moves
+- Parameters: `speed`, `base_color`, `kitt_eye_size`, `kitt_tail_length`, `kitt_tracking_axis`
+
+---
+
+## [1.1.0] - 2025-12-22
+
+### ✨ New Effects
+
+#### Rainbow Effect
+- Smooth cycling through entire color spectrum using HSV color space
+- Configurable spread across LED strip (`rainbow_spread: 0.0-1.0`)
+- Works with single and multi-LED configurations
+- Parameters: `speed`, `rainbow_spread`, `max_brightness`
+
+#### Fire Effect
+- Realistic flickering flame simulation with per-LED heat tracking
+- Orange/red/yellow color spectrum (HSV-based)
+- Configurable cooling rate for chaos control
+- Parameters: `speed`, `min_brightness`, `max_brightness`, `fire_cooling`
+
+#### Comet Effect
+- Moving light with exponential trailing tail
+- Bright head with configurable fade rate
+- Supports forward and reverse direction
+- Parameters: `speed`, `max_brightness`, `comet_tail_length`, `comet_fade_rate`
+
+---
+
 ## [1.0.0] - 2024-12-21
 
 ### 🎉 First Stable Release
@@ -123,4 +254,9 @@ This is the first stable release. Pre-release development history available in c
 - 📝 Documentation
 - 🔧 Maintenance
 
+[1.4.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.0
+[1.3.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.3.0
+[1.2.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.2.0
+[1.1.5]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.1.5
+[1.1.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.1.0
 [1.0.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.0.0

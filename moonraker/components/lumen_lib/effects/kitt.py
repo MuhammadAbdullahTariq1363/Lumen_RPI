@@ -163,6 +163,9 @@ class KITTEffect(BaseEffect):
         """
         colors: List[Optional[RGB]] = []
 
+        # v1.4.0: Cache base_color lookup (avoid repeated tuple access in loop)
+        base_r, base_g, base_b = state.base_color
+
         eye_center = int(position)
         eye_half_size = state.kitt_eye_size // 2
 
@@ -186,8 +189,7 @@ class KITTEffect(BaseEffect):
                 colors.append(None)
                 continue
 
-            # Apply brightness to base color
-            r, g, b = state.base_color
-            colors.append((r * brightness, g * brightness, b * brightness))
+            # Apply brightness to base color (v1.4.0: use cached base color)
+            colors.append((base_r * brightness, base_g * brightness, base_b * brightness))
 
         return colors
