@@ -580,6 +580,16 @@ class Lumen:
 
     async def _on_status_update(self, status: Dict[str, Any]) -> None:
         self.printer_state.update_from_status(status)
+
+        # v1.4.1: Check for macro timeout (macros should clear after 30 seconds)
+        if self._active_macro_state and self._macro_start_time > 0:
+            if time.time() - self._macro_start_time > 30.0:
+                self._log_debug(f"Macro timeout: {self._active_macro_state} (30s elapsed)")
+                self._active_macro_state = None
+                self._macro_start_time = 0.0
+                self.printer_state.active_macro_state = None
+                self.printer_state.macro_start_time = 0.0
+
         new_event = self.state_detector.update(self.printer_state)
         if new_event:
             task = asyncio.create_task(self._apply_event(new_event))
@@ -593,6 +603,9 @@ class Lumen:
         # v1.4.1: CRITICAL - Ignore our own LUMEN messages to prevent infinite loop
         if response.startswith("LUMEN") or response.startswith("// LUMEN"):
             return
+
+        # v1.4.1: Debug - log all gcode responses to diagnose timing issue
+        self._log_debug(f"Gcode response: {response[:100]}")  # First 100 chars
 
         # Convert response to uppercase for case-insensitive matching
         response_upper = response.upper()

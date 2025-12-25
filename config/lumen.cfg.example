@@ -145,7 +145,7 @@ max_brightness: 0.6
 # on_bored: disco
 # on_sleep: off
 # # v1.2.0 - Macro-triggered states
-# on_homing: pulse azure
+# on_homing: pulse lava
 # on_meshing: comet ice
 # on_leveling: pulse orange
 # on_probing: pulse purple
@@ -180,7 +180,7 @@ max_brightness: 0.6
 # on_bored: disco
 # on_sleep: off
 # # v1.2.0 - Macro-triggered states
-# on_homing: solid azure
+# on_homing: solid fire
 # on_meshing: solid ice
 # on_leveling: solid orange
 # on_probing: solid purple
