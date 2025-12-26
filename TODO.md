@@ -149,6 +149,23 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
+## ⚡ v1.4.4 - Effect-Aware Adaptive FPS (December 2025)
+
+### Performance Improvements ✅
+- [x] **Effect-aware FPS scaling** - Intelligent update rates based on effect complexity
+  - Static effects (solid, off): 5 FPS maximum - no animation needed
+  - Slow effects (pulse, heartbeat, thermal, progress): 20 FPS maximum - smooth gradual changes
+  - Fast effects (disco, rainbow, fire, comet, chase, kitt): Full driver speed (30-40 FPS)
+- [x] **Optimized HTTP request distribution** - Reduces unnecessary updates for static/slow effects
+- [x] **CPU/bandwidth conservation** - Frees resources for fast animations
+
+### Results
+- v1.4.3: 28-38 FPS achieved (HTTP bottleneck at 180 req/s with 3 proxy groups)
+- v1.4.4: Adaptive scaling reduces request load, allows fast effects to reach higher FPS
+- Smart resource allocation: static effects don't waste updates, fast effects get priority
+
+---
+
 ## ⚡ v1.4.3 - 60 FPS Performance Optimization (December 2025)
 
 ### Performance Improvements ✅
@@ -158,7 +175,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ### Results
 - v1.4.2: 26-33 FPS achieved (10x improvement from v1.4.1)
-- v1.4.3: Target 60 FPS with reduced timeout + logging overhead
+- v1.4.3: 28-38 FPS achieved with reduced timeout + logging overhead
 - CPU/Memory headroom available (32% / 9% usage on Pi)
 
 ---
@@ -262,7 +279,7 @@ Active development tasks and future enhancements for LUMEN.
 - **Minor releases (v1.x.0)**: New features, backward compatible
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.4.0 (December 2025)
+**Current stable:** v1.4.4 (December 2025)
 **In development:** v1.5.0 (Quality of Life)
 **Next planned release:** v1.5.0 (Quality of Life) - Q1 2026
 
@@ -294,5 +311,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** December 26, 2025
-**Current Version:** v1.4.3 (performance optimization)
-**Status:** v1.4.3 - 60 FPS optimization via reduced timeout (10ms) and quiet mode logging. Targeting true 60 FPS on GPIO/Proxy groups.
+**Current Version:** v1.4.4 (effect-aware adaptive FPS)
+**Status:** v1.4.4 - Intelligent FPS scaling based on effect complexity. Static effects limited to 5 FPS, slow effects to 20 FPS, fast animations get full driver speed (30-40 FPS).

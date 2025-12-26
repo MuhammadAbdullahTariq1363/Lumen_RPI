@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.4] - 2025-12-26
+
+### ⚡ Performance Improvements - Effect-Aware Adaptive FPS
+
+#### Intelligent FPS Scaling Based on Effect Complexity
+- **Issue**: All effects running at same update rate wastes CPU/HTTP on static effects, bottlenecks fast animations
+- **Solution**: Categorize effects by complexity and apply appropriate FPS limits
+  - **Static effects** (`solid`, `off`): 5 FPS (0.2s interval) - no animation, minimal updates needed
+  - **Slow effects** (`pulse`, `heartbeat`, `thermal`, `progress`): 20 FPS (0.05s interval) - smooth enough for gradual changes
+  - **Fast effects** (`disco`, `rainbow`, `fire`, `comet`, `chase`, `kitt`): Full driver speed (30-40 FPS target) - visually demanding animations
+- **Implementation**: Modified animation loop to scale driver intervals based on effect category (lumen.py:1095-1156)
+- **Impact**:
+  - Reduces unnecessary HTTP requests for static/slow effects
+  - Frees up CPU/HTTP capacity for fast animations
+  - Potential to push average effective FPS higher on fast effects
+  - No major architectural changes required
+
+### Changed
+- Version bumped from v1.4.3 to v1.4.4
+- Animation loop now applies effect-aware FPS scaling
+- Static effects limited to 5 FPS maximum
+- Slow effects limited to 20 FPS maximum
+- Fast effects get full available driver speed
+
+---
+
 ## [1.4.3] - 2025-12-26
 
 ### ⚡ Performance Improvements - 60 FPS Optimization
@@ -361,6 +387,8 @@ This is the first stable release. Pre-release development history available in c
 - 📝 Documentation
 - 🔧 Maintenance
 
+[1.4.4]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.4
+[1.4.3]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.3
 [1.4.2]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.2
 [1.4.1]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.1
 [1.4.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.0

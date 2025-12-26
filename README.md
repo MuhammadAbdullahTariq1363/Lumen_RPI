@@ -88,7 +88,7 @@ Edit `~/printer_data/config/lumen.cfg`:
 ```ini
 [lumen_settings]
 max_brightness: 0.4        # Global brightness limit (0.0-1.0)
-gpio_fps: 60               # Animation frame rate for GPIO drivers
+gpio_fps: 30               # Base animation frame rate for GPIO drivers (v1.4.4: adaptive scaling applied)
 
 [lumen_group chamber_leds]
 driver: proxy              # GPIO via proxy service (recommended, 60fps)
@@ -663,9 +663,19 @@ The uninstaller will:
 
 ## Performance
 
-- **GPIO Driver**: 60fps smooth animations, bypasses Klipper G-code queue
+### Effect-Aware Adaptive FPS (v1.4.4)
+LUMEN intelligently adjusts update rates based on effect complexity to optimize CPU and bandwidth:
+
+- **Static effects** (`solid`, `off`): 5 FPS maximum - no animation, minimal updates needed
+- **Slow effects** (`pulse`, `heartbeat`, `thermal`, `progress`): 20 FPS maximum - smooth gradual changes
+- **Fast effects** (`disco`, `rainbow`, `fire`, `comet`, `chase`, `kitt`): Full driver speed (30-40 FPS)
+
+This adaptive scaling reduces unnecessary HTTP requests for static/slow effects, freeing CPU/bandwidth for fast animations.
+
+### Driver Performance
+- **GPIO/Proxy Driver**: 30-40 FPS on fast animations, bypasses Klipper G-code queue
 - **Klipper Driver**: 0.1-5s update rate (slower during prints due to G-code queue)
-- **CPU Usage**: <1% on Raspberry Pi 4 at 60fps
+- **CPU Usage**: <1% on Raspberry Pi 4
 - **Memory**: ~50MB
 
 ---

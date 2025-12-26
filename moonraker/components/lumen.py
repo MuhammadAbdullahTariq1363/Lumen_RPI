@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.4.3"
+__version__ = "1.4.4"
 
 import asyncio
 import logging
@@ -1092,6 +1092,12 @@ class Lumen:
                     'bed_y_max': self.bed_y_max,
                 }
 
+                # v1.4.4: Effect-aware adaptive FPS - static effects don't need high update rates
+                # Categorize effects by update frequency requirements
+                STATIC_EFFECTS = {'solid', 'off'}  # 5 FPS sufficient
+                SLOW_EFFECTS = {'pulse', 'heartbeat', 'thermal', 'progress'}  # 20 FPS sufficient
+                FAST_EFFECTS = {'disco', 'rainbow', 'fire', 'comet', 'chase', 'kitt'}  # 30-40 FPS target
+
                 # Collect intervals from all active animated groups
                 intervals = []
 
@@ -1102,6 +1108,7 @@ class Lumen:
                     coordinated_groups = await self._render_multi_group_chase(chase_groups, now, is_printing)
 
                     # Add intervals for coordinated chase groups (v1.4.0: use cached intervals)
+                    # v1.4.4: Chase is fast effect, use driver interval as-is
                     for group_name in coordinated_groups:
                         if group_name in self._driver_intervals:
                             printing_interval, idle_interval = self._driver_intervals[group_name]
@@ -1128,9 +1135,22 @@ class Lumen:
                             continue
 
                     # v1.4.0: Use cached driver interval (avoids isinstance() check in hot path)
+                    # v1.4.4: Apply effect-aware FPS scaling to reduce unnecessary updates
                     if group_name in self._driver_intervals:
                         printing_interval, idle_interval = self._driver_intervals[group_name]
-                        driver_interval = printing_interval if is_printing else idle_interval
+                        base_interval = printing_interval if is_printing else idle_interval
+
+                        # Scale interval based on effect complexity
+                        if state.effect in STATIC_EFFECTS:
+                            # Static effects: 5 FPS sufficient (0.2s interval)
+                            driver_interval = max(base_interval, 0.2)
+                        elif state.effect in SLOW_EFFECTS:
+                            # Slow animations: 20 FPS sufficient (0.05s interval)
+                            driver_interval = max(base_interval, 0.05)
+                        else:
+                            # Fast animations (disco, rainbow, fire, comet, chase, kitt): use full driver speed
+                            driver_interval = base_interval
+
                         intervals.append(driver_interval)
                     else:
                         continue  # Skip if interval not cached (shouldn't happen)
