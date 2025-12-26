@@ -493,16 +493,22 @@ class Lumen:
         """Cache driver update intervals to avoid isinstance() checks in animation loop (v1.4.0 optimization)."""
         from .lumen_lib.drivers import GPIODriver, ProxyDriver
 
+        # v1.4.2 DEBUG: Verify drivers dict state before loop
+        self._log_info(f"_cache_driver_intervals called with {len(self.drivers)} drivers: {list(self.drivers.keys())}")
+
         for group_name, driver in self.drivers.items():
+            # v1.4.2 DEBUG: Log each driver as we process it
+            self._log_info(f"Processing driver '{group_name}': {type(driver).__name__}")
+
             if isinstance(driver, (GPIODriver, ProxyDriver)):
                 # GPIO/Proxy drivers use FPS-based interval (60 Hz = 0.0167s)
                 interval = 1.0 / self.gpio_fps
                 self._driver_intervals[group_name] = (interval, interval)  # Same for printing and idle
-                self._log_info(f"Cached GPIO/Proxy driver '{group_name}': printing={interval:.4f}s, idle={interval:.4f}s ({type(driver).__name__})")
+                self._log_info(f"  -> Cached GPIO/Proxy driver '{group_name}': printing={interval:.4f}s, idle={interval:.4f}s")
             else:
                 # Klipper/PWM drivers use slower intervals (respects G-code queue)
                 self._driver_intervals[group_name] = (self.update_rate_printing, self.update_rate)
-                self._log_info(f"Cached Klipper/PWM driver '{group_name}': printing={self.update_rate_printing:.4f}s, idle={self.update_rate:.4f}s ({type(driver).__name__})")
+                self._log_info(f"  -> Cached Klipper/PWM driver '{group_name}': printing={self.update_rate_printing:.4f}s, idle={self.update_rate:.4f}s")
 
         self._log_debug(f"Cached driver intervals for {len(self._driver_intervals)} groups")
 
