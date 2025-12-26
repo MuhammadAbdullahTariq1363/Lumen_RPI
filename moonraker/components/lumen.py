@@ -933,11 +933,12 @@ class Lumen:
 
                 coordinated.add(group_name)
 
-                self._log_debug(
-                    f"Chase {chase_num} ({group_name}): {led_count} LEDs, "
-                    f"direction={direction}, electrical={index_start}→{index_end}, "
-                    f"ring_pos={len(circular_led_map)-led_count}→{len(circular_led_map)-1}"
-                )
+                # v1.4.2: Debug logging removed - too spammy at 60 FPS
+                # self._log_debug(
+                #     f"Chase {chase_num} ({group_name}): {led_count} LEDs, "
+                #     f"direction={direction}, electrical={index_start}→{index_end}, "
+                #     f"ring_pos={len(circular_led_map)-led_count}→{len(circular_led_map)-1}"
+                # )
 
         if not circular_led_map:
             return coordinated
@@ -963,16 +964,16 @@ class Lumen:
             master_state, now, total_leds, state_data
         )
 
-        # Debug logging for chase coordination
-        if hasattr(chase_effect, '_predator_pos'):
-            self._log_debug(
-                f"Multi-chase: total_leds={total_leds}, "
-                f"predator_pos={chase_effect._predator_pos:.1f}, "
-                f"prey_pos={chase_effect._prey_pos:.1f}, "
-                f"predator_vel={chase_effect._predator_vel:.1f}, "
-                f"prey_vel={chase_effect._prey_vel:.1f}, "
-                f"speed={master_state.speed}"
-            )
+        # v1.4.2: Debug logging removed - too spammy at 60 FPS
+        # if hasattr(chase_effect, '_predator_pos'):
+        #     self._log_debug(
+        #         f"Multi-chase: total_leds={total_leds}, "
+        #         f"predator_pos={chase_effect._predator_pos:.1f}, "
+        #         f"prey_pos={chase_effect._prey_pos:.1f}, "
+        #         f"predator_vel={chase_effect._predator_vel:.1f}, "
+        #         f"prey_vel={chase_effect._prey_vel:.1f}, "
+        #         f"speed={master_state.speed}"
+        #     )
 
         if not needs_update:
             return coordinated
@@ -1018,7 +1019,8 @@ class Lumen:
             try:
                 if hasattr(driver, 'set_leds'):
                     await driver.set_leds(electrical_colors)
-                    self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (direction={direction})")
+                    # v1.4.2: Debug logging removed - too spammy at 60 FPS
+                    # self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (direction={direction})")
             except Exception as e:
                 self._log_error(f"Multi-chase error in {group_name}: {e}")
 
