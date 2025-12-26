@@ -149,6 +149,29 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
+## ✅ v1.4.1 - Critical Macro Tracking Fixes (December 2025)
+
+### Critical Bug Fixes
+- [x] **Infinite loop console spam** - Filter LUMEN messages from macro detection (lumen.py:603-605)
+- [x] **Malformed G-code debug** - Filter probe result messages (lumen.py:607-610)
+- [x] **Klipper driver timeout spam** - Skip during macro states (lumen.py:983-984, 1102-1103)
+- [x] **GPIO animation slowdown** - Treat macros as non-printing for intervals (lumen.py:1048)
+- [x] **PWM driver timeout spam** - Extended skip logic to PWMDriver (lumen.py:983, 1104)
+- [x] **Config reload issues** - Rebuild interval cache, clear macro state (lumen.py:1256-1267)
+- [x] **Memory leak on reload** - Clear chase cache entries (lumen.py:1271-1272)
+
+### New Features
+- [x] **Macro completion detection** - Automatic state return (lumen.py:612-636)
+- [x] **Macro timeout** - 120-second safety timeout (lumen.py:584-591)
+- [x] **Frame skip detection** - Warns on FPS drops (lumen.py:1188-1200)
+
+### Code Quality Improvements
+- [x] **Paused state consistency** - Macro tracking only (paused.py:37-39)
+- [x] **Color lookup cache** - LRU cache added (colors.py:105)
+- [x] **Clarified comments** - Improved accuracy (lumen.py:795)
+
+---
+
 ## 🔧 v1.5.0 - Quality of Life
 
 ### Configuration Enhancements
@@ -160,7 +183,7 @@ Active development tasks and future enhancements for LUMEN.
 - [ ] **Macro integration** - LUMEN_SET_RELOAD reload lumen after a .cfg change
 
 ### Debugging Tools
-- [ ] **Effect/state testing mode** - Test effects/states using simple macros. Macro to start testing, macros to change to next state or back a state, macros to change to next effect or back an effect. A macro to restart lumen to go back to normal Those 6 macros should make testing easier. 
+- [ ] **Effect/state testing mode** - Test effects/states using simple macros. Macro to start testing, macros to change to next state or back a state, macros to change to next effect or back an effect. A macro to restart lumen to go back to normal Those 6 macros should make testing easier.
 - [ ] **FPS counter** - Report actual achieved frame rate
 - [ ] **Performance profiling** - Identify slow effects or bottlenecks
 
@@ -183,8 +206,8 @@ Active development tasks and future enhancements for LUMEN.
 
 ### Performance
 - [ ] Optimize disco effect random seed (currently uses time.time())
-- [ ] Add frame skip detection for overloaded systems
-- [ ] Consider LRU cache for color lookups
+- [x] ~~Add frame skip detection for overloaded systems~~ (Completed in v1.4.1)
+- [x] ~~Consider LRU cache for color lookups~~ (Completed in v1.4.1)
 
 ### Code Quality
 - [ ] Add type stubs for better IDE support
@@ -246,4 +269,4 @@ Random ideas not yet prioritized:
 
 **Last Updated:** December 25, 2025
 **Current Version:** v1.4.1 (stable)
-**Status:** v1.4.1 Stable - Production tested on Voron Trident | Fixed critical macro tracking bugs (infinite loop console spam, Klipper driver timeout spam during macros), added 30-second macro timeout, selective driver updates during macro states
+**Status:** v1.4.1 Stable - Production tested on Voron Trident | Fixed 7 critical macro tracking bugs (infinite loop spam, timeouts, GPIO slowdown, reload issues, memory leak), added macro completion detection, 120s timeout, frame skip detection, LRU color cache

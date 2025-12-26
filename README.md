@@ -28,22 +28,26 @@ Smart LED effects that respond to your printer's state in real-time. No macros, 
 
 ---
 
-## What's New in v1.4.0
+## What's New in v1.4.1
 
-### Performance Optimizations
-- **60 FPS driver interval caching** - Eliminated 240-300 `isinstance()` checks per second
-- **State data pre-building** - 93% reduction in dictionary operations per animation cycle
-- **Loop attribute caching** - Cached repeated lookups in chase, kitt, and fire effects
-- **Disco random selection** - Optimized from O(n log n) to O(k) algorithm
-- **HSV utility extraction** - Eliminated ~90 lines of duplicated color conversion code
+### Critical Bug Fixes - Macro Tracking
+- **Infinite loop console spam** - Fixed LUMEN console messages triggering infinite macro detection loops
+- **Malformed G-code debug messages** - Filtered probe result messages to eliminate "Malformed command" errors
+- **Klipper driver timeout spam** - Skip Klipper driver updates during macro states (G-code queue blocked)
+- **GPIO animation slowdown** - Maintains 60 FPS during macros by treating them as non-printing states
+- **PWM driver timeout spam** - Extended skip logic to include PWM drivers during macro execution
+- **Config reload issues** - Fixed interval cache rebuild and macro state clearing on hot reload
+- **Memory leak on reload** - Chase coordination cache now properly cleared during config reload
 
-### Critical Bug Fixes
-- **Disco effect crash fix** - Added bounds validation to prevent `ValueError` when `min_sparkle > max_sparkle`
-- **Thermal effect safety** - Added division by zero protection for edge cases
+### New Features
+- **Macro completion detection** - Automatically returns to normal state when macros complete
+- **Macro timeout safety** - 120-second timeout prevents stuck macro states
+- **Frame skip detection** - Warns when system falls behind target FPS due to overload
 
-### Code Cleanup
-- Removed unused imports, dead telemetry code, and unused PWMDriver methods
-- Added error logging to silent exception handlers for better debugging
+### Code Quality Improvements
+- **Paused state consistency** - Now uses macro tracking only, like other states
+- **Color lookup cache** - Added LRU cache to `get_color()` for improved performance
+- **Clarified comments** - Improved comment accuracy regarding effect state updates
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 

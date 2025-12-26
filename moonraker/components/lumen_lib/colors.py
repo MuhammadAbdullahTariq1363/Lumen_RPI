@@ -4,6 +4,7 @@ LUMEN Colors - Color definitions and utilities
 40+ named colors for LED effects.
 """
 
+from functools import lru_cache
 from typing import Dict, List, Tuple
 
 # Type alias for RGB color (0.0-1.0 per channel)
@@ -101,6 +102,7 @@ COLORS: Dict[str, RGB] = {
 }
 
 
+@lru_cache(maxsize=128)  # v1.4.1: Cache color lookups for performance
 def get_color(name: str) -> RGB:
     """Look up color by name (case-insensitive)."""
     return COLORS.get(name.lower(), (0.0, 0.0, 0.0))

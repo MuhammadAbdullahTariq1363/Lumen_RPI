@@ -103,6 +103,11 @@ class Lumen:
         # v1.4.0 - Performance: Cache driver intervals to avoid isinstance() checks in hot path
         self._driver_intervals: Dict[str, Tuple[float, float]] = {}  # group_name -> (printing_interval, idle_interval)
 
+        # v1.4.1 - Frame skip detection for performance monitoring
+        self._last_frame_time = 0.0
+        self._frame_skip_count = 0
+        self._last_skip_warning = 0.0
+
         # Load config and create drivers
         self._load_config()
         self._create_drivers()
@@ -584,7 +589,7 @@ class Lumen:
         # v1.4.1: Check for macro timeout (safety - clear after 2 minutes)
         if self._active_macro_state and self._macro_start_time > 0:
             if time.time() - self._macro_start_time > 120.0:
-                self._log_debug(f"Macro timeout: {self._active_macro_state} (120s elapsed)")
+                self._log_warning(f"Macro timeout: {self._active_macro_state} (120s elapsed, clearing state)")
                 self._active_macro_state = None
                 self._macro_start_time = 0.0
                 self.printer_state.active_macro_state = None
@@ -787,7 +792,7 @@ class Lumen:
             await driver.set_color(r, g, b)
 
         # Update effect state AFTER applying immediate effect
-        # This prevents race condition with animation loop
+        # v1.4.1: This ensures user sees immediate visual feedback before animation loop starts
         state = self.effect_states.get(group_name)
         if state:
             # Clear old cached effect instance if effect type changed
@@ -979,8 +984,8 @@ class Lumen:
             if not driver or group_name not in group_electrical_colors:
                 continue
 
-            # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked)
-            if self._active_macro_state and isinstance(driver, KlipperDriver):
+            # v1.4.1: Skip Klipper/PWM drivers during macro states (G-code queue blocked)
+            if self._active_macro_state and isinstance(driver, (KlipperDriver, PWMDriver)):
                 continue
 
             group_cfg = self.led_groups.get(group_name, {})
@@ -1043,7 +1048,9 @@ class Lumen:
         try:
             while self._animation_running:
                 now = time.time()
-                is_printing = self.printer_state.print_state == "printing"
+                # v1.4.1: During macro states, use idle interval for faster GPIO animations
+                # Macro states (homing, meshing, etc.) should run at full speed even if technically "printing"
+                is_printing = self.printer_state.print_state == "printing" and not self._active_macro_state
 
                 # v1.4.0: Build state_data once per cycle (optimization - was rebuilt for each effect)
                 state_data_cache = {
@@ -1098,8 +1105,8 @@ class Lumen:
                     if not driver:
                         continue
 
-                    # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked, causes timeout spam)
-                    if self._active_macro_state and isinstance(driver, KlipperDriver):
+                    # v1.4.1: Skip Klipper/PWM drivers during macro states (G-code queue blocked, causes timeout spam)
+                    if self._active_macro_state and isinstance(driver, (KlipperDriver, PWMDriver)):
                         continue
 
                     # v1.4.0: Use cached driver interval (avoids isinstance() check in hot path)
@@ -1178,6 +1185,20 @@ class Lumen:
                 if is_printing and intervals:
                     self._log_debug(f"Animation intervals: {intervals}, using min={interval:.4f}s ({1.0/interval:.1f} FPS)")
 
+                # v1.4.1: Frame skip detection - warn if system is overloaded
+                if self._last_frame_time > 0:
+                    actual_interval = now - self._last_frame_time
+                    if actual_interval > interval * 1.5:  # 50% over target
+                        self._frame_skip_count += 1
+                        # Warn every 10 seconds if skipping frames
+                        if now - self._last_skip_warning > 10.0:
+                            expected_fps = 1.0 / interval
+                            actual_fps = 1.0 / actual_interval
+                            self._log_warning(f"Frame skip detected: expected {expected_fps:.1f} FPS, actual {actual_fps:.1f} FPS (skipped {self._frame_skip_count} frames in last 10s)")
+                            self._last_skip_warning = now
+                            self._frame_skip_count = 0
+                self._last_frame_time = now
+
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             self._log_debug("Animation loop cancelled")
@@ -1250,12 +1271,24 @@ class Lumen:
                     await self._animation_task
                 except asyncio.CancelledError:
                     pass
-        
+
+        # v1.4.1: Clear macro state to prevent stuck states after reload
+        self._active_macro_state = None
+        self._macro_start_time = 0.0
+        self.printer_state.active_macro_state = None
+        self.printer_state.macro_start_time = 0.0
+
         # Reload config
         self._load_config()
         self._create_drivers()
 
+        # v1.4.1: Rebuild driver interval cache (required for animation loop)
+        self._cache_driver_intervals()
+
         # Clear caches to prevent memory leaks
+        # v1.4.1: Clear chase coordination cache separately to avoid memory leak
+        self.effect_instances = {k: v for k, v in self.effect_instances.items()
+                                 if not k.startswith("_multi_chase:")}
         self.effect_instances.clear()
         self._last_thermal_log.clear()
 

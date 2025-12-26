@@ -27,22 +27,13 @@ class PausedDetector(BaseStateDetector):
         Triggered by macro tracking when configured pause macros are detected
         in G-code responses (typically PAUSE macro).
 
-        Can also detect via print_stats.state == "paused" if Klipper reports it.
-
         Args:
-            status: Printer status with print_stats
+            status: Printer status (not used for macro-triggered states)
             context: Contains 'active_macro_state' set by macro tracking
 
         Returns:
-            True if print is paused
+            True if pause macro is active
         """
-        # Check macro tracking first
         if context and context.get('active_macro_state') == 'paused':
             return True
-
-        # Fallback: check Klipper print_stats state
-        print_stats = status.get('print_stats', {})
-        if print_stats.get('state') == 'paused':
-            return True
-
         return False

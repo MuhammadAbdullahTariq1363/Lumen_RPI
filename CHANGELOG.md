@@ -23,12 +23,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Klipper Driver Timeout Spam
 - **Root cause**: Klipper's G-code queue blocks during macro execution, causing SET_LED commands to timeout every 2 seconds
-- **Fix**: Skip Klipper driver updates when macro state is active, allowing only GPIO/Proxy drivers to update (lumen.py:956-959, 1071-1075)
+- **Fix**: Skip Klipper driver updates when macro state is active, allowing only GPIO/Proxy drivers to update (lumen.py:983-984, 1102-1103)
 - **Impact**: Eliminated timeout spam in logs, LEDs now respond correctly to macro states on GPIO-attached strips
+
+#### GPIO Animation Slowdown During Macros
+- **Root cause**: Animation interval calculation used `is_printing` check without considering macro states, causing GPIO drivers to use slow "printing" interval during homing/meshing/etc.
+- **Fix**: Treat macro states as non-printing for interval calculation - `is_printing = print_state == "printing" and not self._active_macro_state` (lumen.py:1048)
+- **Impact**: GPIO-driven LEDs now maintain full 60 FPS during all macro states (homing, meshing, leveling, etc.)
+
+#### PWM Driver Timeout Spam During Macros
+- **Root cause**: PWMDriver uses SET_PIN G-code which also blocks during macros, but wasn't skipped like KlipperDriver
+- **Fix**: Skip both KlipperDriver and PWMDriver during macro states (lumen.py:983, 1104)
+- **Impact**: Eliminates timeout spam for PWM-controlled non-addressable LED strips
+
+#### Config Reload Issues
+- **Root cause**: Reload handler didn't rebuild driver interval cache or clear macro state, causing animation failures and stuck states
+- **Fix**: Added `_cache_driver_intervals()` call and macro state reset in `_handle_reload()` (lumen.py:1256-1267)
+- **Impact**: Hot reload now works correctly without requiring moonraker restart
+
+#### Memory Leak on Reload
+- **Root cause**: Multi-group chase coordination cache entries never cleared on reload
+- **Fix**: Clear chase cache entries before full cache clear (lumen.py:1271-1272)
+- **Impact**: Prevents slow memory leak during repeated reloads
 
 ### ✨ New Features
 - **Macro completion detection**: Automatically detects macro completion messages (e.g., "// Mesh Bed Leveling Complete") and returns to normal state cycle (lumen.py:612-636)
 - **Macro timeout**: 120-second safety timeout prevents stuck macro states if completion message not detected (lumen.py:584-591)
+- **Frame skip detection**: Warns if animation loop falls behind target FPS due to system overload (lumen.py:1188-1200)
+
+### 🔧 Code Quality Improvements
+- **Paused state consistency**: Removed dual-detection mode - now uses macro tracking only like other states (paused.py:37-39)
+- **Color lookup cache**: Added LRU cache to `get_color()` for improved performance (colors.py:105)
+- **Clarified comments**: Improved comment accuracy regarding effect state updates (lumen.py:795)
 
 ### Changed
 - Version bumped from v1.4.0 to v1.4.1
