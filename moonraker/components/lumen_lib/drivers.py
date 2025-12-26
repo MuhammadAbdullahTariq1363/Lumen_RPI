@@ -322,7 +322,7 @@ class ProxyDriver(LEDDriver):
         def _send():
             try:
                 req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=0.1) as resp:  # v1.4.3: Fast timeout, fire-and-forget
+                with urllib.request.urlopen(req, timeout=0.01) as resp:  # v1.4.3: Ultra-fast timeout (10ms) for 60 FPS
                     pass  # Don't care about response
             except Exception:
                 pass  # v1.4.3: Silent failure - proxy updates are best-effort at 60 FPS

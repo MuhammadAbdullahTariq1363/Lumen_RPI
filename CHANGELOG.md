@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.3] - 2025-12-26
+
+### ⚡ Performance Improvements - 60 FPS Optimization
+
+#### ProxyDriver Timeout Reduction
+- **Issue**: At 60 FPS with 3 proxy groups = 180 HTTP requests/second, 0.1s timeout still bottlenecking at ~30 FPS
+- **Fix**: Reduced timeout from 0.1s to 0.01s (10ms) for ultra-fast fire-and-forget updates (drivers.py:325)
+- **Impact**: Further reduces HTTP latency overhead
+
+#### WS281x Proxy Quiet Mode
+- **Issue**: Proxy logging 4 messages per request (720 log lines/second at 60 FPS × 3 groups) creates CPU overhead
+- **Fix**: Added `WS281X_QUIET=1` environment variable to suppress verbose logging during high FPS operation
+- **Implementation**:
+  - ws281x_proxy.py lines 45-48: Auto-detect quiet mode from environment
+  - ws281x_proxy.py lines 218, 235, 241, 270, 293-306: Skip verbose logging when quiet mode enabled
+  - install.sh line 465: Add `Environment="WS281X_QUIET=1"` to systemd service
+- **Impact**: Reduces proxy CPU overhead from logging spam, allows more headroom for actual LED updates
+
+### Changed
+- Version bumped from v1.4.2 to v1.4.3
+- ProxyDriver timeout reduced to 10ms
+- WS281x proxy now runs in quiet mode by default (errors still logged)
+
+---
+
 ## [1.4.2] - 2025-12-26
 
 ### 🐛 Critical Bug Fix - Macro Tracking Event Handler Investigation

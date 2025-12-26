@@ -149,6 +149,20 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
+## ⚡ v1.4.3 - 60 FPS Performance Optimization (December 2025)
+
+### Performance Improvements ✅
+- [x] **ProxyDriver timeout reduction** - Reduced from 0.1s to 0.01s (10ms) for 60 FPS target
+- [x] **WS281x proxy quiet mode** - Suppress verbose logging (720 log lines/sec → errors only)
+- [x] **Upgrade script** - Created upgrade_v1.4.3.sh for easy deployment
+
+### Results
+- v1.4.2: 26-33 FPS achieved (10x improvement from v1.4.1)
+- v1.4.3: Target 60 FPS with reduced timeout + logging overhead
+- CPU/Memory headroom available (32% / 9% usage on Pi)
+
+---
+
 ## 🔍 v1.4.2 - CRITICAL Macro Tracking Investigation (December 2025)
 
 ### Critical Bug Investigation
@@ -280,5 +294,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** December 26, 2025
-**Current Version:** v1.4.2 (investigation)
-**Status:** v1.4.2 Investigation - CRITICAL BUG: Macro tracking event handler not receiving gcode responses despite correct registration (debug logging added)
+**Current Version:** v1.4.3 (performance optimization)
+**Status:** v1.4.3 - 60 FPS optimization via reduced timeout (10ms) and quiet mode logging. Targeting true 60 FPS on GPIO/Proxy groups.

@@ -41,7 +41,11 @@ _logger = logging.getLogger(__name__)
 _logging_handler = logging.StreamHandler()
 _logging_handler.setFormatter(logging.Formatter('[WS281X_PROXY] %(message)s'))
 _logger.addHandler(_logging_handler)
-_logger.setLevel(logging.INFO)
+
+# v1.4.3: Quiet mode for high FPS operation (reduces CPU overhead from logging spam)
+import os as _os_env
+_QUIET_MODE = _os_env.getenv('WS281X_QUIET', '').lower() in ('1', 'true', 'yes')
+_logger.setLevel(logging.WARNING if _QUIET_MODE else logging.INFO)
 
 # Strip type mapping for color order
 # rpi_ws281x uses these constants for different color orders
@@ -211,7 +215,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            _logger.info(f"HTTP GET {self.path} from {self.client_address}")
+            if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode (60 FPS = lots of spam)
+                _logger.info(f"HTTP GET {self.path} from {self.client_address}")
             if self.path == '/status':
                 payload = {
                     'strips': {str(k): _strip_sizes[k] for k in _strip_sizes},
@@ -227,12 +232,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            _logger.info(f"HTTP {self.command} {self.path} from {self.client_address}")
+            if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode (60 FPS = lots of spam)
+                _logger.info(f"HTTP {self.command} {self.path} from {self.client_address}")
             length = int(self.headers.get('Content-Length', '0'))
             try:
                 body = self.rfile.read(length)
                 data = json.loads(body or b'{}')
-                _logger.info(f"Request JSON: {data}")
+                if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode
+                    _logger.info(f"Request JSON: {data}")
             except Exception as e:
                 self._send_json(400, {'error': 'bad json', 'message': str(e)})
                 return
@@ -260,7 +267,8 @@ class Handler(BaseHTTPRequestHandler):
                 for i in range(start - 1, end):
                     strip.setPixelColor(i, c)
                 strip.show()
-                _logger.info(f"Applied set_color gpio={gpio_pin} start={start} end={end} color=({int(r*255)},{int(g*255)},{int(b*255)})")
+                if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode
+                    _logger.info(f"Applied set_color gpio={gpio_pin} start={start} end={end} color=({int(r*255)},{int(g*255)},{int(b*255)})")
                 self._send_json(200, {'result': 'ok'})
                 return
 
@@ -281,20 +289,21 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_json(500, {'error': 'strip init failed'})
                     return
 
-                # Prepare debug sample and equality check
-                try:
-                    converted = []
-                    for c in colors[:3]:
-                        if c is None:
-                            converted.append((0,0,0))
-                        else:
-                            r, g, b = c
-                            converted.append((int(r*255), int(g*255), int(b*255)))
-                    all_equal = len(colors) > 0 and all((((0,0,0) if c is None else (int(c[0]*255), int(c[1]*255), int(c[2]*255))) == ((0,0,0) if colors[0] is None else (int(colors[0][0]*255), int(colors[0][1]*255), int(colors[0][2]*255)))) for c in colors)
-                except Exception:
-                    converted = []
-                    all_equal = False
-                _logger.info(f"Set_leds gpio={gpio_pin} start={start} len={len(colors)} sample={converted} all_equal={all_equal}")
+                # v1.4.3: Debug logging only when not in quiet mode
+                if not _QUIET_MODE:
+                    try:
+                        converted = []
+                        for c in colors[:3]:
+                            if c is None:
+                                converted.append((0,0,0))
+                            else:
+                                r, g, b = c
+                                converted.append((int(r*255), int(g*255), int(b*255)))
+                        all_equal = len(colors) > 0 and all((((0,0,0) if c is None else (int(c[0]*255), int(c[1]*255), int(c[2]*255))) == ((0,0,0) if colors[0] is None else (int(colors[0][0]*255), int(colors[0][1]*255), int(colors[0][2]*255)))) for c in colors)
+                    except Exception:
+                        converted = []
+                        all_equal = False
+                    _logger.info(f"Set_leds gpio={gpio_pin} start={start} len={len(colors)} sample={converted} all_equal={all_equal}")
 
                 for i, color in enumerate(colors):
                     led_index = start - 1 + i
