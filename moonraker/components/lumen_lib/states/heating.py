@@ -46,9 +46,27 @@ class HeatingDetector(BaseStateDetector):
         # Check all heaters for active heating
         heating_active = self._is_heating_active(status)
 
+        # DEBUG: Log heating detection state
+        import logging
+        logger = logging.getLogger("moonraker")
+
+        # Get heater values for debug
+        heater_bed = status.get('heater_bed', {})
+        bed_temp = heater_bed.get('temperature', 0)
+        bed_target = heater_bed.get('target', 0)
+        bed_power = heater_bed.get('power', 0)
+
+        extruder = status.get('extruder', {})
+        ext_temp = extruder.get('temperature', 0)
+        ext_target = extruder.get('target', 0)
+        ext_power = extruder.get('power', 0)
+
+        logger.info(f"[HEATING DEBUG] heating_active={heating_active}, bed={bed_temp:.1f}/{bed_target:.1f} pwr={bed_power:.3f}, ext={ext_temp:.1f}/{ext_target:.1f} pwr={ext_power:.3f}, stable_since={self._stable_since}, current_time={current_time:.3f}")
+
         if heating_active:
             # Actively heating - reset stability timer
             self._stable_since = None
+            logger.info(f"[HEATING DEBUG] Returning True - heating_active")
             return True
 
         # Not actively heating - check if we should stay in heating due to other conditions
@@ -58,26 +76,33 @@ class HeatingDetector(BaseStateDetector):
         if self._is_print_starting(status):
             # Reset stability timer - we want to stay in heating throughout PRINT_START
             self._stable_since = None
+            logger.info(f"[HEATING DEBUG] Returning True - print_starting")
             return True
 
         # If we have no targets set at all, definitely exit heating immediately
         if not self._any_targets_set(status):
             self._stable_since = None
+            logger.info(f"[HEATING DEBUG] Returning False - no targets")
             return False
 
         # Targets are set but heaters are stable (at temp and low power)
         # Start/continue stability timer
         if self._stable_since is None:
             self._stable_since = current_time
+            logger.info(f"[HEATING DEBUG] Started stability timer at {current_time:.3f}")
 
         # Check if we've been stable long enough to exit heating
         stable_duration = current_time - self._stable_since
+        logger.info(f"[HEATING DEBUG] Stable duration: {stable_duration:.3f}s / {self.STABLE_TIME}s")
+
         if stable_duration >= self.STABLE_TIME:
             # Been stable long enough - exit heating
             self._stable_since = None
+            logger.info(f"[HEATING DEBUG] Returning False - stable for {stable_duration:.3f}s")
             return False
 
         # Still within stability grace period - stay in heating
+        logger.info(f"[HEATING DEBUG] Returning True - within stability grace period ({stable_duration:.3f}s / {self.STABLE_TIME}s)")
         return True
 
     def _any_targets_set(self, status: Dict[str, Any]) -> bool:
