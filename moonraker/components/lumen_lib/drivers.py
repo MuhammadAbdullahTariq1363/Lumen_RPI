@@ -374,9 +374,10 @@ class ProxyDriver(LEDDriver):
 
         queue = _gpio_request_queues[self.gpio_pin]
 
-        # v1.4.10: Drop old frames if queue is backing up (keep max 2 pending requests)
+        # v1.4.10: Drop old frames if queue is backing up (keep max 1 pending request)
         # This prevents flicker from stale frames showing through
-        while queue.qsize() >= 2:
+        # Only keep the currently-processing request + 1 pending = always show latest frame
+        while queue.qsize() >= 1:
             try:
                 queue.get_nowait()  # Drop oldest pending request
                 queue.task_done()
