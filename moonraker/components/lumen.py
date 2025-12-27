@@ -628,9 +628,6 @@ class Lumen:
 
     async def _on_gcode_response(self, *args, **kwargs) -> None:
         """Handle G-code responses to detect macro execution (v1.2.0)."""
-        # v1.4.7 DEBUG: Log what parameters Moonraker is actually passing
-        self._log_info(f"[DEBUG] _on_gcode_response called! args={args}, kwargs={kwargs}")
-
         if not self.klippy_ready:
             return
 
@@ -644,12 +641,12 @@ class Lumen:
             self._log_info(f"[DEBUG] Could not find response string in event data!")
             return
 
+        # v1.4.7 DEBUG: Log ALL gcode responses (before filtering) to see everything
+        self._log_info(f"[DEBUG] GCODE Response: {response[:80]}")
+
         # v1.4.1: CRITICAL - Ignore our own LUMEN messages to prevent infinite loop
         if response.startswith("LUMEN") or response.startswith("// LUMEN"):
             return
-
-        # v1.4.6 DEBUG: Enable logging to diagnose why macro detection not working
-        self._log_info(f"[DEBUG] GCODE Response: {response[:80]}")
 
         # v1.4.1: Skip probe results and most comment lines (noise reduction)
         # These flood the logs and don't contain macro names
