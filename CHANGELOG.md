@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.8] - 2025-12-26 🎯 HOMING DETECTION FIX
+
+### 🐛 Fixed - G28 Homing Not Detected
+
+#### Root Cause (SOLVED!)
+After extensive debugging (v1.4.5-1.4.7), discovered that G28 **does not generate gcode responses**:
+- Z_TILT_ADJUST generates probe result messages → macro tracking works ✓
+- BED_MESH_CALIBRATE generates "mesh saved" messages → macro tracking works ✓
+- **G28 runs completely silent** → no gcode responses → macro tracking fails ✗
+
+The gcode response-based detection (`subscribe_gcode_output()`) only works for macros that print console output. G28 doesn't print anything, so `server:gcode_response` events never fire.
+
+#### Solution - Subscribe to `toolhead.homed_axes`
+Instead of relying on gcode responses, now detect homing by monitoring Klipper's `toolhead.homed_axes` object:
+- When G28 runs, Klipper **clears** homed_axes (e.g., "xyz" → "")
+- When homing completes, Klipper **sets** homed_axes (e.g., "" → "xyz")
+- Detect the transition from homed → unhomed to trigger the "homing" state
+
+### Changed
+- **Subscription**: Added `homed_axes` to toolhead object subscription
+- **State tracking**: Added `_last_homed_axes` to track previous homed state
+- **Detection logic**: `_on_status_update()` now detects homing start/end via homed_axes changes
+- **Code cleanup**: Created `_activate_macro_state()` helper to avoid duplication
+- **Dual detection**: G28 detected via homed_axes changes, other macros still detected via gcode responses
+
+### Technical Details
+```python
+# Homing START detection (axes go from homed to unhomed)
+if self._last_homed_axes and not current_homed_axes:
+    self._activate_macro_state("homing")
+
+# Homing END detection (axes go from unhomed to homed)
+elif not self._last_homed_axes and current_homed_axes:
+    # Clear homing state, return to normal state cycle
+    self._active_macro_state = None
+```
+
+### Expected Behavior
+- G28 → Center LEDs show `on_homing` effect (solid white / KITT / etc.)
+- BED_MESH_CALIBRATE → Center LEDs show `on_meshing` effect (KITT cobalt)
+- Z_TILT_ADJUST → Side LEDs show `on_leveling` thermal effects
+- All macro states transition immediately when macros start (not waiting for completion messages)
+
+---
+
 ## [1.4.7] - 2025-12-26 🔍 DIAGNOSTIC VERSION - Event Handler Signature
 
 ### 🐛 Investigating - Event Handler Not Being Invoked

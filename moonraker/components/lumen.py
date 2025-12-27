@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.4.7"
+__version__ = "1.4.8"
 
 import asyncio
 import logging
@@ -81,6 +81,9 @@ class Lumen:
         self.macro_filament: List[str] = []
         self._active_macro_state: Optional[str] = None  # Current macro-triggered state
         self._macro_start_time: float = 0.0
+
+        # v1.4.8 - Homing detection via toolhead.homed_axes
+        self._last_homed_axes: str = ""  # Track previous homed_axes to detect homing start
 
         # LED groups, drivers, effects
         self.led_groups: Dict[str, Dict[str, Any]] = {}
@@ -539,7 +542,7 @@ class Lumen:
                 "heater_bed": ["temperature", "target"],
                 "extruder": ["temperature", "target"],
                 "idle_timeout": ["state"],
-                "toolhead": ["position"],
+                "toolhead": ["position", "homed_axes"],  # v1.4.8 - Added homed_axes for homing detection
                 # v1.3.0 - Optional sensors (graceful if not present)
                 "temperature_sensor chamber_temp": ["temperature"],
                 "filament_switch_sensor filament_sensor": ["filament_detected"],
@@ -559,7 +562,7 @@ class Lumen:
                 "heater_bed": ["temperature", "target"],
                 "extruder": ["temperature", "target"],
                 "idle_timeout": ["state"],
-                "toolhead": ["position"],
+                "toolhead": ["position", "homed_axes"],  # v1.4.8 - Added homed_axes
                 # v1.3.0 - Optional sensors
                 "temperature_sensor chamber_temp": ["temperature"],
                 "filament_switch_sensor filament_sensor": ["filament_detected"],
@@ -567,7 +570,12 @@ class Lumen:
             if result:
                 self.printer_state.update_from_status(result)
                 self._log_debug(f"Initial state: print={self.printer_state.print_state}, bed_target={self.printer_state.bed_target}")
-            
+
+                # v1.4.8 - Initialize homed_axes tracking
+                if "toolhead" in result and "homed_axes" in result["toolhead"]:
+                    self._last_homed_axes = result["toolhead"]["homed_axes"]
+                    self._log_debug(f"Initial homed_axes: '{self._last_homed_axes}'")
+
             # Detect current event from queried state
             event = self.state_detector.update(self.printer_state)
             if event:
@@ -609,7 +617,43 @@ class Lumen:
             except Exception as e:
                 self._log_error(f"Failed to turn off {name}: {e}")
 
+    def _activate_macro_state(self, state_name: str) -> None:
+        """
+        Activate a macro-triggered state (v1.4.8).
+
+        Args:
+            state_name: Name of the macro state (homing, meshing, leveling, etc.)
+        """
+        self._active_macro_state = state_name
+        self._macro_start_time = time.time()
+        self.printer_state.active_macro_state = state_name
+        self.printer_state.macro_start_time = self._macro_start_time
+        self._log_debug(f"Macro state activated: {state_name}")
+
     async def _on_status_update(self, status: Dict[str, Any]) -> None:
+        # v1.4.8 - Detect homing via homed_axes changes
+        if "toolhead" in status and "homed_axes" in status["toolhead"]:
+            current_homed_axes = status["toolhead"]["homed_axes"]
+
+            # Detect homing START: axes go from homed (e.g., "xyz") to unhomed (e.g., "")
+            # When G28 runs, Klipper clears homed_axes first, then sets them after homing
+            if self._last_homed_axes and not current_homed_axes:
+                # Axes just became unhomed - homing is starting!
+                self._log_info(f"[DEBUG] Homing detected: homed_axes changed from '{self._last_homed_axes}' to '' (homing started)")
+                self._activate_macro_state("homing")
+
+            # Detect homing END: axes go from unhomed to homed
+            elif not self._last_homed_axes and current_homed_axes:
+                self._log_info(f"[DEBUG] Homing complete: homed_axes changed from '' to '{current_homed_axes}'")
+                # Clear homing state - printer will transition to next state automatically
+                if self._active_macro_state == "homing":
+                    self._active_macro_state = None
+                    self._macro_start_time = 0.0
+                    self.printer_state.active_macro_state = None
+                    self.printer_state.macro_start_time = 0.0
+
+            self._last_homed_axes = current_homed_axes
+
         self.printer_state.update_from_status(status)
 
         # v1.4.1: Check for macro timeout (safety - clear after 2 minutes)
@@ -700,12 +744,8 @@ class Lumen:
             for macro in macro_list:
                 if macro in response_upper:
                     # Macro detected - activate macro state
-                    self._active_macro_state = state_name
-                    self._macro_start_time = time.time()
-                    # Update PrinterState with macro info
-                    self.printer_state.active_macro_state = state_name
-                    self.printer_state.macro_start_time = self._macro_start_time
-                    self._log_debug(f"Macro detected: {macro} → state: {state_name}")
+                    self._activate_macro_state(state_name)
+                    self._log_info(f"[DEBUG] Macro detected via gcode: {macro} → state: {state_name}")
 
                     # Force state detector to re-evaluate with macro state active
                     new_event = self.state_detector.update(self.printer_state)
