@@ -631,6 +631,12 @@ class Lumen:
         self._log_debug(f"Macro state activated: {state_name}")
 
     async def _on_status_update(self, status: Dict[str, Any]) -> None:
+        # v1.4.8 - DEBUG: Log ALL status updates to see what we're receiving
+        if "toolhead" in status:
+            self._log_info(f"[DEBUG] Status update contains toolhead: {list(status['toolhead'].keys())}")
+            if "homed_axes" in status["toolhead"]:
+                self._log_info(f"[DEBUG] homed_axes in update: '{status['toolhead']['homed_axes']}'")
+
         # v1.4.8 - Detect homing via homed_axes changes
         if "toolhead" in status and "homed_axes" in status["toolhead"]:
             current_homed_axes = status["toolhead"]["homed_axes"]
