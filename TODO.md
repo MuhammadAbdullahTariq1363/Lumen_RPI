@@ -225,6 +225,53 @@ Active development tasks and future enhancements for LUMEN.
 - [ ] **WebSocket notifications** - Broadcast state changes to Mainsail/Fluidd
 - [ ] **Macro integration** - LUMEN_SET_RELOAD reload lumen after a .cfg change
 
+### Macro Integration Helpers
+- [ ] **LUMEN_WAKE command** - Simplified macro state control (v1.5.0)
+  - **Problem**: Silent macros (G28, etc.) require manual RESPOND messages:
+    ```gcode
+    [gcode_macro G28]
+    rename_existing: G28.1
+    gcode:
+        RESPOND MSG="LUMEN_HOMING_START"
+        G28.1 {rawparams}
+        RESPOND MSG="LUMEN_HOMING_END"
+    ```
+  - **Solution**: Add `LUMEN_WAKE STATE=<state>` command for cleaner integration:
+    ```gcode
+    [gcode_macro G28]
+    rename_existing: G28.1
+    gcode:
+        LUMEN_WAKE STATE=homing
+        G28.1 {rawparams}
+        # State automatically cleared on macro completion
+    ```
+  - **Benefits**:
+    - No need for manual LUMEN_*_END messages
+    - Auto-timeout prevents stuck states (current 120s)
+    - Cleaner macro code
+    - Backward compatible (RESPOND messages still work)
+  - **Implementation**:
+    - Register as Klipper extended G-code command
+    - Parse STATE parameter (homing, meshing, leveling, probing, paused, cancelled, filament)
+    - Set `_active_macro_state` and `_macro_start_time` directly
+    - Add to lumen.py `async def _register_commands()`
+  - **Validation**:
+    - Reject invalid state names
+    - Warn if called during active print
+    - Log state changes for debugging
+  - **Documentation Updates**:
+    - Add to README.md macro integration section
+    - Update example configs to show both methods
+    - Add to API reference
+  - **Investigation Notes (v1.4.5-v1.4.8)**:
+    - Fully automatic macro detection is impossible for silent macros
+    - G28 produces no gcode responses (cannot be auto-detected)
+    - `homed_axes` doesn't change during homing on most machines
+    - Moonraker subscriptions only send deltas (changed fields)
+    - Polling is inefficient and antithetical to event-driven architecture
+    - "Loud" macros (Z_TILT_ADJUST, BED_MESH_CALIBRATE) auto-detect via probe messages
+    - LUMEN_WAKE will make silent macro integration easier than RESPOND messages
+
 ### Debugging Tools
 - [ ] **Effect/state testing mode** - Test effects/states using simple macros. Macro to start testing, macros to change to next state or back a state, macros to change to next effect or back an effect. A macro to restart lumen to go back to normal Those 6 macros should make testing easier.
 - [ ] **FPS counter** - Report actual achieved frame rate
@@ -311,5 +358,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** December 26, 2025
-**Current Version:** v1.4.5 (macro tracking bugfix)
-**Status:** 🔥 v1.4.5 CRITICAL BUGFIX - Macro tracking now functional for first time since v1.2.0. Fixed missing subscribe_gcode_output() call. All 7 macro states (homing, meshing, leveling, probing, paused, cancelled, filament) now working correctly.
+**Current Version:** v1.4.8 (beta - macro tracking investigation)
+**Status:** ⚠️ v1.4.8 INVESTIGATION COMPLETE - Discovered that fully automatic macro detection is impossible for silent macros (G28, etc.). "Loud" macros (Z_TILT_ADJUST, BED_MESH_CALIBRATE) auto-detect via gcode responses. Silent macros require RESPOND messages. LUMEN_WAKE command planned for v1.5.0 to simplify integration.

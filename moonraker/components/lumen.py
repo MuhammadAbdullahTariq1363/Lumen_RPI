@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.4.8"
+__version__ = "1.4.9"
 
 import asyncio
 import logging
@@ -631,38 +631,9 @@ class Lumen:
         self._log_debug(f"Macro state activated: {state_name}")
 
     async def _on_status_update(self, status: Dict[str, Any]) -> None:
-        # v1.4.8 - Query homed_axes on every status update (subscriptions only send deltas)
-        # Position updates happen frequently, so we poll homed_axes to detect changes
-        if "toolhead" in status and "position" in status["toolhead"]:
-            self._log_info(f"[DEBUG] Position update detected, querying homed_axes...")
-            try:
-                klippy_apis = self.server.lookup_component("klippy_apis")
-                result = await klippy_apis.query_objects({"toolhead": ["homed_axes"]})
-                self._log_info(f"[DEBUG] Query result: {result}")
-
-                if result and "toolhead" in result and "homed_axes" in result["toolhead"]:
-                    current_homed_axes = result["toolhead"]["homed_axes"]
-                    self._log_info(f"[DEBUG] Current homed_axes: '{current_homed_axes}', Last: '{self._last_homed_axes}'")
-
-                    # Detect homing START: axes go from homed to unhomed
-                    if self._last_homed_axes and not current_homed_axes:
-                        self._log_info(f"[DEBUG] Homing detected: homed_axes '{self._last_homed_axes}' → '' (homing started)")
-                        self._activate_macro_state("homing")
-
-                    # Detect homing END: axes go from unhomed to homed
-                    elif not self._last_homed_axes and current_homed_axes:
-                        self._log_info(f"[DEBUG] Homing complete: homed_axes '' → '{current_homed_axes}'")
-                        if self._active_macro_state == "homing":
-                            self._active_macro_state = None
-                            self._macro_start_time = 0.0
-                            self.printer_state.active_macro_state = None
-                            self.printer_state.macro_start_time = 0.0
-
-                    self._last_homed_axes = current_homed_axes
-                else:
-                    self._log_info(f"[DEBUG] Query returned no homed_axes data")
-            except Exception as e:
-                self._log_info(f"[DEBUG] Failed to query homed_axes: {e}")
+        # v1.4.9 - Removed v1.4.8 homed_axes polling (proved ineffective and spammy)
+        # Investigation showed homed_axes doesn't change during homing on most machines
+        # Macro tracking must use RESPOND messages or LUMEN_WAKE command instead
 
         self.printer_state.update_from_status(status)
 

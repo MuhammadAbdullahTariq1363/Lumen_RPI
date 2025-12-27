@@ -4,11 +4,11 @@
 
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
-[![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.4.5-blue)]()
+[![Status](https://img.shields.io/badge/status-beta-yellow)]()
+[![Version](https://img.shields.io/badge/version-v1.4.8-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.4.5 Release** - CRITICAL BUGFIX: Macro tracking now functional for the first time since v1.2.0
+> **v1.4.8 Dev** - Macro tracking requires RESPOND messages for silent macros (G28, custom homing, etc.)
 
 ---
 
@@ -28,20 +28,39 @@ Smart LED effects that respond to your printer's state in real-time. No macros, 
 
 ---
 
-## What's New in v1.4.5
+## What's New in v1.4.8
 
-### 🔥 CRITICAL BUGFIX - Macro Tracking Now Works!
-- **The Bug**: Macro tracking has been completely broken since v1.2.0 initial release
-- **The Cause**: Component registered `server:gcode_response` event handler but never called `subscribe_gcode_output()`
-- **The Fix**: Now properly subscribes to Klippy's gcode output stream during initialization
-- **Impact**: All 7 macro-triggered states now work for the first time ever:
-  - `on_homing` - Triggers during G28, HOMING_OVERRIDE
-  - `on_meshing` - Triggers during BED_MESH_CALIBRATE
-  - `on_leveling` - Triggers during Z_TILT_ADJUST, QUAD_GANTRY_LEVEL
-  - `on_probing` - Triggers during probe calibration macros
-  - `on_paused` - Triggers when print paused
-  - `on_cancelled` - Triggers when print cancelled
-  - `on_filament` - Triggers during filament change/runout/load/unload
+### ⚠️ Macro Tracking Status - Requires RESPOND Messages
+
+**The Reality**: After extensive investigation (v1.4.5-v1.4.8), we discovered that **fully automatic macro detection is impossible** for macros that don't generate console output.
+
+#### Why Automatic Detection Doesn't Work
+1. **G28 produces no gcode responses** - Silent macros can't be detected via `subscribe_gcode_output()`
+2. **`homed_axes` doesn't change** - Klipper doesn't clear homed_axes during homing on most machines
+3. **Subscriptions send deltas only** - Moonraker only broadcasts fields that change, not every field on every update
+4. **Polling is inefficient** - Querying on every position update creates performance overhead
+
+#### The Solution - Add RESPOND Messages to Your Macros
+
+For macros that run silently (G28, custom homing, etc.), add a single `RESPOND` line:
+
+```gcode
+[gcode_macro G28]
+gcode:
+    RESPOND MSG="LUMEN_HOMING_START"
+    # ... your actual homing code ...
+    G28.1 {rawparams}  # or whatever your homing does
+    RESPOND MSG="LUMEN_HOMING_END"
+```
+
+**Macros that generate output work automatically**:
+- `Z_TILT_ADJUST` - Prints probe results → auto-detected ✓
+- `BED_MESH_CALIBRATE` - Prints "Bed Mesh state saved" → auto-detected ✓
+- `QUAD_GANTRY_LEVEL` - Prints probe results → auto-detected ✓
+
+**Macros that need RESPOND messages**:
+- `G28` / `HOMING_OVERRIDE` - Silent → needs `LUMEN_HOMING_START/END`
+- Custom probe macros - May be silent → add `LUMEN_PROBING_START/END`
 
 ### Previous Release (v1.4.4) - Effect-Aware Adaptive FPS
 - **Intelligent FPS scaling** - Automatically adjusts update rates based on effect complexity
@@ -110,6 +129,27 @@ Then restart Moonraker:
 ```bash
 sudo systemctl restart moonraker
 ```
+
+### Macro Integration (Optional but Recommended)
+
+LUMEN automatically detects macros that print console output (Z_TILT_ADJUST, BED_MESH_CALIBRATE, etc.). For **silent macros** like G28, add RESPOND messages to enable LED state changes:
+
+```gcode
+[gcode_macro G28]
+rename_existing: G28.1
+gcode:
+    RESPOND MSG="LUMEN_HOMING_START"
+    G28.1 {rawparams}
+    RESPOND MSG="LUMEN_HOMING_END"
+```
+
+**Supported RESPOND messages**:
+- `LUMEN_HOMING_START` / `LUMEN_HOMING_END` - Triggers `on_homing` LED state
+- `LUMEN_MESHING_START` / `LUMEN_MESHING_END` - Triggers `on_meshing` (usually auto-detected)
+- `LUMEN_LEVELING_START` / `LUMEN_LEVELING_END` - Triggers `on_leveling` (usually auto-detected)
+- `LUMEN_PROBING_START` / `LUMEN_PROBING_END` - Triggers `on_probing`
+
+**Note**: Most macros work without modification. Only add RESPOND if your LEDs don't change during specific operations.
 
 ---
 

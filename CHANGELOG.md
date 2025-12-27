@@ -7,48 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.4.8] - 2025-12-26 🎯 HOMING DETECTION FIX
+## [1.4.8] - 2025-12-26 📋 INVESTIGATION COMPLETE - Macro Detection Limitations
 
-### 🐛 Fixed - G28 Homing Not Detected
+### ⚠️ **IMPORTANT FINDINGS** - Fully Automatic Macro Detection Is Impossible
 
-#### Root Cause (SOLVED!)
-After extensive debugging (v1.4.5-1.4.7), discovered that G28 **does not generate gcode responses**:
-- Z_TILT_ADJUST generates probe result messages → macro tracking works ✓
-- BED_MESH_CALIBRATE generates "mesh saved" messages → macro tracking works ✓
-- **G28 runs completely silent** → no gcode responses → macro tracking fails ✗
+After exhaustive investigation spanning v1.4.5 through v1.4.8, we've conclusively determined that **automatic detection of silent macros is not technically feasible** in Moonraker/Klipper architecture.
 
-The gcode response-based detection (`subscribe_gcode_output()`) only works for macros that print console output. G28 doesn't print anything, so `server:gcode_response` events never fire.
+#### Root Causes Discovered
 
-#### Solution - Subscribe to `toolhead.homed_axes`
-Instead of relying on gcode responses, now detect homing by monitoring Klipper's `toolhead.homed_axes` object:
-- When G28 runs, Klipper **clears** homed_axes (e.g., "xyz" → "")
-- When homing completes, Klipper **sets** homed_axes (e.g., "" → "xyz")
-- Detect the transition from homed → unhomed to trigger the "homing" state
+**1. G28 Produces No Gcode Responses** (v1.4.5-v1.4.7)
+- Z_TILT_ADJUST generates probe result messages → auto-detected ✓
+- BED_MESH_CALIBRATE generates "mesh saved" messages → auto-detected ✓
+- **G28 runs completely silent** → no gcode responses → cannot detect ✗
 
-### Changed
-- **Subscription**: Added `homed_axes` to toolhead object subscription
-- **State tracking**: Added `_last_homed_axes` to track previous homed state
-- **Detection logic**: `_on_status_update()` now detects homing start/end via homed_axes changes
-- **Code cleanup**: Created `_activate_macro_state()` helper to avoid duplication
-- **Dual detection**: G28 detected via homed_axes changes, other macros still detected via gcode responses
+**2. homed_axes Doesn't Change During Homing** (v1.4.8)
+- Attempted to detect homing via `toolhead.homed_axes` transitions
+- Expected: `"xyz"` → `""` (unhomed) → `"xyz"` (homed)
+- **Reality**: `homed_axes` stays `"xyz"` throughout entire G28 process
+- Klipper doesn't clear homed_axes during homing on most machines
 
-### Technical Details
-```python
-# Homing START detection (axes go from homed to unhomed)
-if self._last_homed_axes and not current_homed_axes:
-    self._activate_macro_state("homing")
+**3. Moonraker Subscriptions Send Deltas Only** (v1.4.8)
+- `subscribe_objects()` only broadcasts fields that **change**
+- Position updates contain `["position"]` but NOT `["homed_axes"]`
+- Attempted polling via `query_objects()` on every position update
+- Result: Massive performance overhead, still no detection
 
-# Homing END detection (axes go from unhomed to homed)
-elif not self._last_homed_axes and current_homed_axes:
-    # Clear homing state, return to normal state cycle
-    self._active_macro_state = None
+#### Attempted Solutions (All Failed)
+
+- **v1.4.5**: Added `subscribe_gcode_output()` - Works for loud macros, fails for silent ones
+- **v1.4.6**: Comprehensive config parser debugging - Config loads correctly, not the issue
+- **v1.4.7**: Event handler signature investigation - Callback works, just no data for G28
+- **v1.4.8**: homed_axes polling - Axes don't change during homing, polling too expensive
+
+### Solution - RESPOND Messages Required for Silent Macros
+
+**Macros That Work Automatically** (generate console output):
+```gcode
+Z_TILT_ADJUST          # Prints probe results → auto-detected ✓
+BED_MESH_CALIBRATE     # Prints "mesh saved" message → auto-detected ✓
+QUAD_GANTRY_LEVEL      # Prints probe results → auto-detected ✓
 ```
 
-### Expected Behavior
-- G28 → Center LEDs show `on_homing` effect (solid white / KITT / etc.)
-- BED_MESH_CALIBRATE → Center LEDs show `on_meshing` effect (KITT cobalt)
-- Z_TILT_ADJUST → Side LEDs show `on_leveling` thermal effects
-- All macro states transition immediately when macros start (not waiting for completion messages)
+**Macros That Need RESPOND Messages** (silent operation):
+```gcode
+[gcode_macro G28]
+rename_existing: G28.1
+gcode:
+    RESPOND MSG="LUMEN_HOMING_START"
+    G28.1 {rawparams}
+    RESPOND MSG="LUMEN_HOMING_END"
+```
+
+### Changed
+
+- **Documentation**: Updated README to explain RESPOND message requirement
+- **Expectation**: Changed from "fully automatic" to "requires RESPOND for silent macros"
+- **Code**: Added `_activate_macro_state()` helper for DRY
+- **Testing**: Confirmed Z_TILT_ADJUST auto-detection works, G28 requires RESPOND
+
+### Architectural Insight
+
+The fundamental issue is Moonraker's event-driven architecture:
+1. Components can only react to events Klipper broadcasts
+2. Klipper only broadcasts changes (deltas), not full state
+3. Silent macros generate no events to react to
+4. Polling is antithetical to event-driven design and kills performance
+
+**There is no technical solution** without macros announcing themselves via RESPOND or M117.
 
 ---
 
