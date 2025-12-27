@@ -1030,8 +1030,8 @@ class Lumen:
                             # Static effects: 5 FPS sufficient (0.2s interval)
                             driver_interval = max(base_interval, 0.2)
                         elif state.effect in SLOW_EFFECTS:
-                            # Slow animations: 20 FPS sufficient (0.05s interval)
-                            driver_interval = max(base_interval, 0.05)
+                            # Slow animations: 10 FPS sufficient (0.1s interval) - v1.4.10: reduced from 20 FPS to allow blocking HTTP requests time to complete
+                            driver_interval = max(base_interval, 0.1)
                         else:
                             # Fast animations (disco, rainbow, fire, comet, chase, kitt): use full driver speed
                             driver_interval = base_interval
