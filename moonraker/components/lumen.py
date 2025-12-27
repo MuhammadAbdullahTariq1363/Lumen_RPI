@@ -1025,16 +1025,8 @@ class Lumen:
                         printing_interval, idle_interval = self._driver_intervals[group_name]
                         base_interval = printing_interval if is_printing else idle_interval
 
-                        # Scale interval based on effect complexity
-                        if state.effect in STATIC_EFFECTS:
-                            # Static effects: 5 FPS sufficient (0.2s interval)
-                            driver_interval = max(base_interval, 0.2)
-                        elif state.effect in SLOW_EFFECTS:
-                            # Slow animations: 10 FPS sufficient (0.1s interval) - v1.4.10: reduced from 20 FPS to allow blocking HTTP requests time to complete
-                            driver_interval = max(base_interval, 0.1)
-                        else:
-                            # Fast animations (disco, rainbow, fire, comet, chase, kitt): use full driver speed
-                            driver_interval = base_interval
+                        # v1.4.10: TESTING - run all effects at full driver speed
+                        driver_interval = base_interval
 
                         intervals.append(driver_interval)
                     else:
