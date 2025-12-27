@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.4.9"
+__version__ = "1.4.10"
 
 import asyncio
 import logging

@@ -365,7 +365,7 @@ class ProxyDriver(LEDDriver):
         return f"http://{self.proxy_host}:{self.proxy_port}{path}"
 
     async def _post(self, path: str, payload: Dict[str, Any]) -> None:
-        """Queue HTTP POST to proxy (v1.4.10: non-blocking with serialized queue)."""
+        """Queue HTTP POST to proxy (v1.4.10: non-blocking with serialized queue, NO frame dropping)."""
         # Start worker if needed
         await self._start_queue_worker()
 
@@ -374,17 +374,8 @@ class ProxyDriver(LEDDriver):
 
         queue = _gpio_request_queues[self.gpio_pin]
 
-        # v1.4.10: Drop old frames if queue is backing up (keep max 1 pending request)
-        # This prevents flicker from stale frames showing through
-        # Only keep the currently-processing request + 1 pending = always show latest frame
-        while queue.qsize() >= 1:
-            try:
-                queue.get_nowait()  # Drop oldest pending request
-                queue.task_done()
-            except asyncio.QueueEmpty:
-                break
-
-        # Add to queue - returns immediately, worker processes serially
+        # v1.4.10: No frame dropping - queue everything for testing
+        # This tests if frame dropping was causing incomplete batches
         await queue.put((url, data))
 
     async def set_color(self, r: float, g: float, b: float) -> None:
