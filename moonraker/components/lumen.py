@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.4.10"
+__version__ = "1.4.11"
 
 import asyncio
 import logging
@@ -587,22 +587,105 @@ class Lumen:
         if event_name not in self.event_mappings:
             self._log_debug(f"No mappings for event: {event_name}")
             return
-        
+
         self._log_debug(f"Applying event: {event_name} to {len(self.event_mappings[event_name])} groups")
-        
+
+        # v1.4.11: Collect immediate effect updates for batching ProxyDrivers
+        immediate_updates = []  # List of (driver, group_name, mapping, effect_color)
+
         for mapping in self.event_mappings[event_name]:
             group_name = mapping["group"]
-            
+
             driver = self.drivers.get(group_name)
             if not driver:
                 self._log_debug(f"No driver for group: {group_name}")
                 continue
-            
-            await self._apply_effect(group_name, driver, mapping)
+
+            # Collect immediate effect info for batching later
+            immediate_updates.append((driver, group_name, mapping))
+
+        # v1.4.11: Apply immediate visual feedback with batching for ProxyDrivers
+        await self._apply_immediate_effects(immediate_updates)
+
+        # Now update effect states for all groups
+        for driver, group_name, mapping in immediate_updates:
+            await self._apply_effect(group_name, driver, mapping, skip_immediate=True)
 
         await self._ensure_animation_loop()
-    
-    async def _apply_effect(self, group_name: str, driver: LEDDriver, mapping: Dict[str, Any]) -> None:
+
+    async def _apply_immediate_effects(self, updates: List[Tuple[LEDDriver, str, Dict[str, Any]]]) -> None:
+        """
+        Apply immediate visual feedback for effect changes, with batching for ProxyDrivers.
+
+        v1.4.11: This ensures ProxyDrivers sharing a GPIO pin update atomically,
+        preventing visual glitches during state transitions.
+        """
+        from .lumen_lib.drivers import ProxyDriver
+
+        # Group ProxyDrivers by GPIO pin for batching
+        gpio_batches = {}  # gpio_pin -> [(driver, group_name, color)]
+        non_proxy_updates = []  # [(driver, group_name, color)]
+
+        # First pass: calculate colors for all effects
+        for driver, group_name, mapping in updates:
+            effect = mapping["effect"]
+            color_name = mapping.get("color")
+
+            # Get base color
+            if color_name:
+                from .lumen_lib.colors import get_color
+                base_r, base_g, base_b = get_color(color_name)
+            else:
+                base_r, base_g, base_b = (1.0, 1.0, 1.0)
+
+            r = base_r * self.max_brightness
+            g = base_g * self.max_brightness
+            b = base_b * self.max_brightness
+
+            if isinstance(driver, ProxyDriver):
+                gpio_pin = driver.gpio_pin
+                if gpio_pin not in gpio_batches:
+                    gpio_batches[gpio_pin] = []
+                gpio_batches[gpio_pin].append((driver, group_name, effect, r, g, b))
+            else:
+                non_proxy_updates.append((driver, group_name, effect, r, g, b))
+
+        # Apply non-proxy updates immediately (no batching needed)
+        for driver, group_name, effect, r, g, b in non_proxy_updates:
+            if effect == "off":
+                await driver.set_off()
+            else:
+                await driver.set_color(r, g, b)
+
+        # Apply batched ProxyDriver updates atomically
+        for gpio_pin, batch in gpio_batches.items():
+            if len(batch) == 1:
+                # Single group on this GPIO - no batching needed
+                driver, group_name, effect, r, g, b = batch[0]
+                if effect == "off":
+                    await driver.set_off()
+                else:
+                    await driver.set_color(r, g, b)
+            else:
+                # Multiple groups share GPIO - use atomic batch update
+                batch_updates = []
+                for driver, group_name, effect, r, g, b in batch:
+                    if effect == "off":
+                        r, g, b = 0.0, 0.0, 0.0
+                    batch_updates.append({
+                        'index_start': driver.index_start,
+                        'index_end': driver.index_end,
+                        'r': r,
+                        'g': g,
+                        'b': b,
+                        'color_order': driver.color_order,
+                    })
+
+                # Send all updates in one atomic HTTP request
+                if batch_updates and hasattr(batch[0][0], 'set_batch'):
+                    await batch[0][0].set_batch(batch_updates)
+
+    async def _apply_effect(self, group_name: str, driver: LEDDriver, mapping: Dict[str, Any], skip_immediate: bool = False) -> None:
         """Apply effect to a driver.
         
         Args:
@@ -678,16 +761,18 @@ class Lumen:
                      end_color[1] * self.max_brightness, 
                      end_color[2] * self.max_brightness)
         
-        # Apply immediate effects FIRST (before updating state)
-        # This ensures the driver shows the correct state immediately
-        if effect == "off":
-            await driver.set_off()
-        elif effect == "solid":
-            await driver.set_color(r, g, b)
-        elif effect in ("pulse", "heartbeat", "disco"):
-            await driver.set_color(r, g, b)
-        else:
-            await driver.set_color(r, g, b)
+        # v1.4.11: Apply immediate effects only if not already handled by batching
+        if not skip_immediate:
+            # Apply immediate effects FIRST (before updating state)
+            # This ensures the driver shows the correct state immediately
+            if effect == "off":
+                await driver.set_off()
+            elif effect == "solid":
+                await driver.set_color(r, g, b)
+            elif effect in ("pulse", "heartbeat", "disco"):
+                await driver.set_color(r, g, b)
+            else:
+                await driver.set_color(r, g, b)
 
         # Update effect state AFTER applying immediate effect
         # v1.4.1: This ensures user sees immediate visual feedback before animation loop starts
