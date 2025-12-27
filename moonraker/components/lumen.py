@@ -635,8 +635,8 @@ class Lumen:
         if response.startswith("LUMEN") or response.startswith("// LUMEN"):
             return
 
-        # v1.4.5 DEBUG: Enable logging to diagnose why macro detection not working
-        self._log_debug(f"[GCODE_RESPONSE_DEBUG] Received: {response[:100]}")
+        # v1.4.6 DEBUG: Enable logging to diagnose why macro detection not working
+        self._log_info(f"[DEBUG] GCODE Response: {response[:80]}")
 
         # v1.4.1: Skip probe results and most comment lines (noise reduction)
         # These flood the logs and don't contain macro names
