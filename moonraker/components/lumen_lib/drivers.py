@@ -354,6 +354,22 @@ class ProxyDriver(LEDDriver):
     async def set_off(self) -> None:
         await self.set_color(0.0, 0.0, 0.0)
 
+    async def set_batch(self, updates: List[Dict[str, Any]]) -> None:
+        """
+        v1.4.6: Batch multiple LED range updates into one atomic HTTP request.
+        This prevents flickering when multiple groups share the same GPIO pin.
+
+        Args:
+            updates: List of update dicts, each containing either:
+                - colors update: {index_start, colors, color_order}
+                - solid color update: {index_start, index_end, r, g, b, color_order}
+        """
+        payload = {
+            "gpio_pin": self.gpio_pin,
+            "updates": updates,
+        }
+        await self._post('/set_batch', payload)
+
 
 def create_driver(name: str, config: Dict[str, Any], server: Any) -> Optional[LEDDriver]:
     """Factory function to create the appropriate driver."""

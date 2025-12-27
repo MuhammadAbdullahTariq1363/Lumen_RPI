@@ -320,6 +320,70 @@ class Handler(BaseHTTPRequestHandler):
 
             # (end of set_leds)
 
+            # v1.4.6: /set_batch endpoint - atomic update for multiple LED ranges on same GPIO
+            if self.path == '/set_batch':
+                gpio_pin = int(data.get('gpio_pin', 18))
+                updates: List[Dict] = data.get('updates', [])
+
+                if not updates:
+                    self._send_json(400, {'error': 'no updates provided'})
+                    return
+
+                # Find max LED index needed for strip initialization
+                max_index = 0
+                for update in updates:
+                    start = int(update.get('index_start', 1))
+                    colors = update.get('colors', [])
+                    if colors:
+                        max_index = max(max_index, start - 1 + len(colors))
+                    else:
+                        end = int(update.get('index_end', start))
+                        max_index = max(max_index, end)
+
+                # Use first update's color order (all groups on same GPIO should have same order)
+                color_order = updates[0].get('color_order', 'GRB').upper().strip()
+                strip_type = STRIP_TYPES.get(color_order, DEFAULT_STRIP_TYPE)
+
+                strip = _get_strip(gpio_pin, max_index, strip_type)
+                if not strip:
+                    self._send_json(500, {'error': 'strip init failed'})
+                    return
+
+                # Apply all updates to the strip (no show() yet - batch them)
+                for update in updates:
+                    start = int(update.get('index_start', 1))
+                    colors = update.get('colors')
+
+                    if colors is not None:
+                        # Multi-LED update
+                        for i, color in enumerate(colors):
+                            led_index = start - 1 + i
+                            if led_index >= _strip_sizes[gpio_pin]:
+                                break
+                            if color is None:
+                                strip.setPixelColor(led_index, Color(0, 0, 0))
+                            else:
+                                r, g, b = color
+                                strip.setPixelColor(led_index, Color(int(r * 255), int(g * 255), int(b * 255)))
+                    else:
+                        # Solid color update
+                        end = int(update.get('index_end', start))
+                        r = float(update.get('r', 1.0))
+                        g = float(update.get('g', 1.0))
+                        b = float(update.get('b', 1.0))
+                        c = Color(int(r * 255), int(g * 255), int(b * 255))
+                        for i in range(start - 1, end):
+                            strip.setPixelColor(i, c)
+
+                # CRITICAL: Single atomic show() for all updates
+                strip.show()
+
+                if not _QUIET_MODE:
+                    _logger.info(f"Applied set_batch gpio={gpio_pin} updates={len(updates)}")
+
+                self._send_json(200, {'result': 'ok'})
+                return
+
             # /init_strip endpoint: allows pre-initialization for diagnostics
             if self.path == '/init_strip':
                 gpio_pin = int(data.get('gpio_pin', 18))

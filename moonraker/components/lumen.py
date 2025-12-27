@@ -997,6 +997,9 @@ class Lumen:
                             printing_interval, idle_interval = self._driver_intervals[group_name]
                             intervals.append(printing_interval if is_printing else idle_interval)
 
+                # v1.4.6: Collect updates by GPIO pin for batching (prevents flickering on shared pins)
+                gpio_batches = {}  # {gpio_pin: [(driver, colors, group_name), ...]}
+
                 for group_name, state in self.effect_states.items():
                     # Skip groups that are part of multi-group chase coordination
                     if group_name in coordinated_groups:
@@ -1078,22 +1081,78 @@ class Lumen:
                         if state.effect in ("disco",):
                             state.last_update = now
 
-                        # Apply colors to driver
-                        if len(colors) == 1:
-                            # Single color effect (pulse, heartbeat, solid, off)
-                            color = colors[0]
-                            if color is None:
-                                await driver.set_off()
-                            else:
-                                r, g, b = color
-                                await driver.set_color(r, g, b)
+                        # v1.4.6: Collect ProxyDriver updates for batching by GPIO pin
+                        if isinstance(driver, ProxyDriver):
+                            gpio_pin = driver.gpio_pin
+                            if gpio_pin not in gpio_batches:
+                                gpio_batches[gpio_pin] = []
+                            gpio_batches[gpio_pin].append((driver, colors, group_name))
                         else:
-                            # Multi-LED effect (disco, thermal, progress)
-                            if hasattr(driver, 'set_leds'):
-                                await driver.set_leds(colors)
+                            # Non-proxy drivers (Klipper, PWM, GPIO): apply immediately
+                            if len(colors) == 1:
+                                # Single color effect (pulse, heartbeat, solid, off)
+                                color = colors[0]
+                                if color is None:
+                                    await driver.set_off()
+                                else:
+                                    r, g, b = color
+                                    await driver.set_color(r, g, b)
+                            else:
+                                # Multi-LED effect (disco, thermal, progress)
+                                if hasattr(driver, 'set_leds'):
+                                    await driver.set_leds(colors)
 
                     except Exception as e:
                         self._log_error(f"Animation error in {group_name}: {e}")
+
+                # v1.4.6: Apply batched GPIO updates atomically (prevents flickering)
+                for gpio_pin, batch in gpio_batches.items():
+                    try:
+                        if len(batch) == 1:
+                            # Only one group on this GPIO pin - no batching needed
+                            driver, colors, _ = batch[0]
+                            if len(colors) == 1:
+                                color = colors[0]
+                                if color is None:
+                                    await driver.set_off()
+                                else:
+                                    r, g, b = color
+                                    await driver.set_color(r, g, b)
+                            else:
+                                if hasattr(driver, 'set_leds'):
+                                    await driver.set_leds(colors)
+                        else:
+                            # Multiple groups share this GPIO pin - use atomic batch update
+                            updates = []
+                            for driver, colors, group_name in batch:
+                                if len(colors) == 1:
+                                    # Solid color update
+                                    color = colors[0]
+                                    if color is None:
+                                        r, g, b = 0.0, 0.0, 0.0
+                                    else:
+                                        r, g, b = color
+                                    updates.append({
+                                        'index_start': driver.index_start,
+                                        'index_end': driver.index_end,
+                                        'r': r,
+                                        'g': g,
+                                        'b': b,
+                                        'color_order': driver.color_order,
+                                    })
+                                else:
+                                    # Multi-LED update (progress, thermal, etc.)
+                                    updates.append({
+                                        'index_start': driver.index_start,
+                                        'colors': colors,
+                                        'color_order': driver.color_order,
+                                    })
+
+                            # Send all updates in one atomic HTTP request
+                            if updates and hasattr(batch[0][0], 'set_batch'):
+                                await batch[0][0].set_batch(updates)
+                    except Exception as e:
+                        self._log_error(f"GPIO batch error on pin {gpio_pin}: {e}")
 
                 # Use the smallest interval (highest update rate needed)
                 # This ensures fast drivers get their updates while slow drivers still work
