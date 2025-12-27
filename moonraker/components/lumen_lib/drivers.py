@@ -316,16 +316,27 @@ class ProxyDriver(LEDDriver):
 
     async def _post(self, path: str, payload: Dict[str, Any]) -> None:
         """Blocking HTTP POST to proxy (v1.4.10: serialize batch updates to prevent flickering)."""
+        import time
         url = self._proxy_url(path)
         data = json.dumps(payload).encode('utf-8')
 
         def _send():
+            start_time = time.time()
+            success = False
             try:
                 req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=0.1) as resp:  # v1.4.10: 100ms timeout for batch requests
                     pass  # Don't care about response
-            except Exception:
-                pass  # Silent failure - proxy updates are best-effort
+                success = True
+            except Exception as e:
+                elapsed = time.time() - start_time
+                _logger.warning(f"[LUMEN] Proxy HTTP timeout/error after {elapsed*1000:.1f}ms on {path}: {e}")
+
+            if success:
+                elapsed = time.time() - start_time
+                # Log if request took longer than 50ms (half the frame time at 20 FPS)
+                if elapsed > 0.05:
+                    _logger.warning(f"[LUMEN] Slow proxy response: {elapsed*1000:.1f}ms on {path}")
 
         # v1.4.10: BLOCKING - wait for HTTP request to complete before returning
         # This serializes batch updates and prevents interleaving that causes flickering
