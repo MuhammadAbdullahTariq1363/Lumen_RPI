@@ -6,7 +6,7 @@ import random
 import math
 from typing import List, Optional, Tuple
 from .base import BaseEffect
-from ..colors import RGB
+from ..colors import RGB, hsv_to_rgb
 from ..effects import EffectState
 
 
@@ -58,6 +58,11 @@ class FireEffect(BaseEffect):
 
         colors: List[Optional[RGB]] = []
 
+        # v1.4.0: Cache brightness calculations (avoid repeated attribute lookups in loop)
+        min_bright = state.min_brightness
+        max_bright = state.max_brightness
+        brightness_range = max_bright - min_bright
+
         for i in range(led_count):
             # Cool down the LED
             self._heat_values[i] *= (1.0 - state.fire_cooling)
@@ -72,7 +77,7 @@ class FireEffect(BaseEffect):
 
             # Convert heat to fire color
             heat = self._heat_values[i]
-            brightness = state.min_brightness + heat * (state.max_brightness - state.min_brightness)
+            brightness = min_bright + heat * brightness_range
 
             # Fire color spectrum: dark red -> orange -> yellow -> white
             # Heat maps to hue: 0.0 (red) -> 0.15 (yellow)
@@ -81,40 +86,8 @@ class FireEffect(BaseEffect):
             # Higher heat = more saturated (brighter flames)
             saturation = 1.0 - (heat * 0.3)  # Less saturation as heat increases
 
-            rgb = self._hsv_to_rgb(hue, saturation, brightness)
+            # v1.4.0: Use shared HSV→RGB utility (eliminates duplication)
+            rgb = hsv_to_rgb(hue, saturation, brightness)
             colors.append(rgb)
 
         return colors, True
-
-    @staticmethod
-    def _hsv_to_rgb(h: float, s: float, v: float) -> RGB:
-        """
-        Convert HSV to RGB.
-
-        Args:
-            h: Hue (0.0-1.0)
-            s: Saturation (0.0-1.0)
-            v: Value/brightness (0.0-1.0)
-
-        Returns:
-            RGB tuple (0.0-1.0 per channel)
-        """
-        h = h * 6.0  # Scale hue to 0-6
-        c = v * s    # Chroma
-        x = c * (1 - abs(h % 2 - 1))
-        m = v - c
-
-        if h < 1:
-            r, g, b = c, x, 0
-        elif h < 2:
-            r, g, b = x, c, 0
-        elif h < 3:
-            r, g, b = 0, c, x
-        elif h < 4:
-            r, g, b = 0, x, c
-        elif h < 5:
-            r, g, b = x, 0, c
-        else:
-            r, g, b = c, 0, x
-
-        return (r + m, g + m, b + m)

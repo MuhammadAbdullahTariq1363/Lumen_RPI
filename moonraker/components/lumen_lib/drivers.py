@@ -144,12 +144,6 @@ class PWMDriver(LEDDriver):
     
     async def set_off(self) -> None:
         await self.set_brightness(0.0)
-    
-    async def set_on(self) -> None:
-        await self.set_brightness(1.0)
-    
-    async def set_dim(self, level: float = 0.3) -> None:
-        await self.set_brightness(level)
 
 
 class GPIODriver(LEDDriver):
@@ -219,8 +213,9 @@ class GPIODriver(LEDDriver):
                             try:
                                 color = old_strip.getPixelColor(i)
                                 new_strip.setPixelColor(i, color)
-                            except Exception:
-                                pass  # Ignore errors copying individual pixels
+                            except Exception as e:
+                                # v1.4.0: Log exception for debugging
+                                _logger.debug(f"[LUMEN] Failed to copy LED {i} state during strip expansion: {e}")
 
                         # Replace with new expanded strip
                         _gpio_strips[self.gpio_pin] = new_strip
@@ -319,22 +314,21 @@ class ProxyDriver(LEDDriver):
     def _proxy_url(self, path: str) -> str:
         return f"http://{self.proxy_host}:{self.proxy_port}{path}"
 
-    async def _post(self, path: str, payload: Dict[str, Any]) -> bool:
+    async def _post(self, path: str, payload: Dict[str, Any]) -> None:
+        """Fire-and-forget HTTP POST to proxy (v1.4.3: non-blocking for 60 FPS)."""
         url = self._proxy_url(path)
         data = json.dumps(payload).encode('utf-8')
 
         def _send():
             try:
                 req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=2) as resp:
-                    if resp.getcode() == 200:
-                        return True
-            except Exception as e:
-                _logger.warning(f"[LUMEN] ProxyDriver failed to connect to {url}: {e}")
-                return False
-            return False
+                with urllib.request.urlopen(req, timeout=0.01) as resp:  # v1.4.3: Ultra-fast timeout (10ms) for 60 FPS
+                    pass  # Don't care about response
+            except Exception:
+                pass  # v1.4.3: Silent failure - proxy updates are best-effort at 60 FPS
 
-        return await asyncio.to_thread(_send)
+        # v1.4.3: Fire in background, don't await - animation loop must not block
+        asyncio.create_task(asyncio.to_thread(_send))
 
     async def set_color(self, r: float, g: float, b: float) -> None:
         payload = {
@@ -346,7 +340,7 @@ class ProxyDriver(LEDDriver):
             "b": b,
             "color_order": self.color_order,
         }
-        await self._post('/set_color', payload)
+        await self._post('/set_color', payload)  # Returns immediately now
 
     async def set_leds(self, colors: List[Optional[RGB]]) -> None:
         payload = {
@@ -355,10 +349,26 @@ class ProxyDriver(LEDDriver):
             "colors": colors,
             "color_order": self.color_order,
         }
-        await self._post('/set_leds', payload)
+        await self._post('/set_leds', payload)  # Returns immediately now
 
     async def set_off(self) -> None:
         await self.set_color(0.0, 0.0, 0.0)
+
+    async def set_batch(self, updates: List[Dict[str, Any]]) -> None:
+        """
+        v1.4.6: Batch multiple LED range updates into one atomic HTTP request.
+        This prevents flickering when multiple groups share the same GPIO pin.
+
+        Args:
+            updates: List of update dicts, each containing either:
+                - colors update: {index_start, colors, color_order}
+                - solid color update: {index_start, index_end, r, g, b, color_order}
+        """
+        payload = {
+            "gpio_pin": self.gpio_pin,
+            "updates": updates,
+        }
+        await self._post('/set_batch', payload)
 
 
 def create_driver(name: str, config: Dict[str, Any], server: Any) -> Optional[LEDDriver]:

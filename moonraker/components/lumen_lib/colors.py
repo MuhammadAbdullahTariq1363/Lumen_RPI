@@ -4,6 +4,7 @@ LUMEN Colors - Color definitions and utilities
 40+ named colors for LED effects.
 """
 
+from functools import lru_cache
 from typing import Dict, List, Tuple
 
 # Type alias for RGB color (0.0-1.0 per channel)
@@ -101,6 +102,7 @@ COLORS: Dict[str, RGB] = {
 }
 
 
+@lru_cache(maxsize=128)  # v1.4.1: Cache color lookups for performance
 def get_color(name: str) -> RGB:
     """Look up color by name (case-insensitive)."""
     return COLORS.get(name.lower(), (0.0, 0.0, 0.0))
@@ -109,3 +111,43 @@ def get_color(name: str) -> RGB:
 def list_colors() -> List[str]:
     """Return list of all available color names."""
     return sorted(COLORS.keys())
+
+
+def hsv_to_rgb(h: float, s: float = 1.0, v: float = 1.0) -> RGB:
+    """
+    Convert HSV color space to RGB (v1.4.0 - extracted shared utility).
+
+    Args:
+        h: Hue (0.0-1.0 maps to 0-360 degrees)
+        s: Saturation (0.0-1.0, default 1.0 = full saturation)
+        v: Value/brightness (0.0-1.0, default 1.0 = full brightness)
+
+    Returns:
+        RGB tuple (each channel 0.0-1.0)
+
+    Used by: rainbow, fire, disco effects
+    """
+    # Convert hue to 0-6 range for color wheel sectors
+    h_sector = h * 6.0
+
+    # Calculate chroma (colorfulness)
+    c = v * s
+    x = c * (1.0 - abs(h_sector % 2.0 - 1.0))
+    m = v - c
+
+    # Determine RGB' based on which 60-degree sector hue falls in
+    if h_sector < 1.0:
+        r_prime, g_prime, b_prime = c, x, 0.0
+    elif h_sector < 2.0:
+        r_prime, g_prime, b_prime = x, c, 0.0
+    elif h_sector < 3.0:
+        r_prime, g_prime, b_prime = 0.0, c, x
+    elif h_sector < 4.0:
+        r_prime, g_prime, b_prime = 0.0, x, c
+    elif h_sector < 5.0:
+        r_prime, g_prime, b_prime = x, 0.0, c
+    else:
+        r_prime, g_prime, b_prime = c, 0.0, x
+
+    # Add match value to get final RGB
+    return (r_prime + m, g_prime + m, b_prime + m)

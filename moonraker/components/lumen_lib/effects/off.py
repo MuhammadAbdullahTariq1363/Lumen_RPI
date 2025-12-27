@@ -26,4 +26,5 @@ class OffEffect(BaseEffect):
         state_data: Optional[dict] = None
     ) -> Tuple[List[Optional[RGB]], bool]:
         """Return black for all LEDs."""
-        return [(0.0, 0.0, 0.0)], True
+        # v1.4.6: Static effect - only needs update on first call (effect change)
+        return [(0.0, 0.0, 0.0)], False
