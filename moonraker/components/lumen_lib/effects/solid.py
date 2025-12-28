@@ -27,5 +27,4 @@ class SolidEffect(BaseEffect):
         state_data: Optional[dict] = None
     ) -> Tuple[List[Optional[RGB]], bool]:
         """Return solid color for all LEDs."""
-        # v1.4.6: Static effect - only needs update on first call (effect change)
-        return [state.base_color], False
+        return [state.base_color], True

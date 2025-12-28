@@ -41,11 +41,7 @@ _logger = logging.getLogger(__name__)
 _logging_handler = logging.StreamHandler()
 _logging_handler.setFormatter(logging.Formatter('[WS281X_PROXY] %(message)s'))
 _logger.addHandler(_logging_handler)
-
-# v1.4.3: Quiet mode for high FPS operation (reduces CPU overhead from logging spam)
-import os as _os_env
-_QUIET_MODE = _os_env.getenv('WS281X_QUIET', '').lower() in ('1', 'true', 'yes')
-_logger.setLevel(logging.WARNING if _QUIET_MODE else logging.INFO)
+_logger.setLevel(logging.INFO)
 
 # Strip type mapping for color order
 # rpi_ws281x uses these constants for different color orders
@@ -64,9 +60,8 @@ _strips: Dict[int, PixelStrip] = {}
 _strip_sizes: Dict[int, int] = {}
 _strip_types: Dict[int, int] = {}  # Store strip_type per pin
 _strip_errors: Dict[int, str] = {}
-# v1.4.12: Keep only init lock for thread-safe strip creation
-_strip_init_locks: Dict[int, Lock] = {}
-_strip_init_locks_lock = Lock()  # Global lock to protect _strip_init_locks creation
+_strip_locks: Dict[int, Lock] = {}
+_strip_locks_lock = Lock()  # Global lock to protect _strip_locks creation
 
 
 def _get_strip(pin: int, total: int, strip_type: int = DEFAULT_STRIP_TYPE) -> Optional[PixelStrip]:
@@ -77,13 +72,13 @@ def _get_strip(pin: int, total: int, strip_type: int = DEFAULT_STRIP_TYPE) -> Op
         total: Minimum number of LEDs needed
         strip_type: Color order constant (e.g., ws.WS2811_STRIP_GRB)
     """
-    # Ensure a per-pin lock exists (thread-safe strip initialization only)
-    global _strip_init_locks, _strip_init_locks_lock
-    with _strip_init_locks_lock:
-        if pin not in _strip_init_locks:
-            _strip_init_locks[pin] = Lock()
+    # Ensure a per-pin lock exists (thread-safe creation)
+    global _strip_locks, _strip_locks_lock
+    with _strip_locks_lock:
+        if pin not in _strip_locks:
+            _strip_locks[pin] = Lock()
 
-    with _strip_init_locks[pin]:
+    with _strip_locks[pin]:
         # Check if strip already exists
         if pin in _strips:
             cur = _strip_sizes[pin]
@@ -216,8 +211,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode (60 FPS = lots of spam)
-                _logger.info(f"HTTP GET {self.path} from {self.client_address}")
+            _logger.info(f"HTTP GET {self.path} from {self.client_address}")
             if self.path == '/status':
                 payload = {
                     'strips': {str(k): _strip_sizes[k] for k in _strip_sizes},
@@ -233,14 +227,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode (60 FPS = lots of spam)
-                _logger.info(f"HTTP {self.command} {self.path} from {self.client_address}")
+            _logger.info(f"HTTP {self.command} {self.path} from {self.client_address}")
             length = int(self.headers.get('Content-Length', '0'))
             try:
                 body = self.rfile.read(length)
                 data = json.loads(body or b'{}')
-                if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode
-                    _logger.info(f"Request JSON: {data}")
+                _logger.info(f"Request JSON: {data}")
             except Exception as e:
                 self._send_json(400, {'error': 'bad json', 'message': str(e)})
                 return
@@ -264,15 +256,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_json(500, {'error': 'strip init failed'})
                     return
 
-                # v1.4.12: No locking - reverted to original simple approach
                 c = Color(int(r * 255), int(g * 255), int(b * 255))
                 for i in range(start - 1, end):
                     strip.setPixelColor(i, c)
                 strip.show()
-                # WS281x reset time handled by hardware (>50μs automatically)
-
-                if not _QUIET_MODE:  # v1.4.3: Skip logging in quiet mode
-                    _logger.info(f"Applied set_color gpio={gpio_pin} start={start} end={end} color=({int(r*255)},{int(g*255)},{int(b*255)})")
+                _logger.info(f"Applied set_color gpio={gpio_pin} start={start} end={end} color=({int(r*255)},{int(g*255)},{int(b*255)})")
                 self._send_json(200, {'result': 'ok'})
                 return
 
@@ -293,23 +281,21 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_json(500, {'error': 'strip init failed'})
                     return
 
-                # v1.4.3: Debug logging only when not in quiet mode
-                if not _QUIET_MODE:
-                    try:
-                        converted = []
-                        for c in colors[:3]:
-                            if c is None:
-                                converted.append((0,0,0))
-                            else:
-                                r, g, b = c
-                                converted.append((int(r*255), int(g*255), int(b*255)))
-                        all_equal = len(colors) > 0 and all((((0,0,0) if c is None else (int(c[0]*255), int(c[1]*255), int(c[2]*255))) == ((0,0,0) if colors[0] is None else (int(colors[0][0]*255), int(colors[0][1]*255), int(colors[0][2]*255)))) for c in colors)
-                    except Exception:
-                        converted = []
-                        all_equal = False
-                    _logger.info(f"Set_leds gpio={gpio_pin} start={start} len={len(colors)} sample={converted} all_equal={all_equal}")
+                # Prepare debug sample and equality check
+                try:
+                    converted = []
+                    for c in colors[:3]:
+                        if c is None:
+                            converted.append((0,0,0))
+                        else:
+                            r, g, b = c
+                            converted.append((int(r*255), int(g*255), int(b*255)))
+                    all_equal = len(colors) > 0 and all((((0,0,0) if c is None else (int(c[0]*255), int(c[1]*255), int(c[2]*255))) == ((0,0,0) if colors[0] is None else (int(colors[0][0]*255), int(colors[0][1]*255), int(colors[0][2]*255)))) for c in colors)
+                except Exception:
+                    converted = []
+                    all_equal = False
+                _logger.info(f"Set_leds gpio={gpio_pin} start={start} len={len(colors)} sample={converted} all_equal={all_equal}")
 
-                # v1.4.12: No locking - reverted to original simple approach
                 for i, color in enumerate(colors):
                     led_index = start - 1 + i
                     if led_index >= _strip_sizes[gpio_pin]:
@@ -320,78 +306,10 @@ class Handler(BaseHTTPRequestHandler):
                         r, g, b = color
                         strip.setPixelColor(led_index, Color(int(r * 255), int(g * 255), int(b * 255)))
                 strip.show()
-                # WS281x reset time handled by hardware (>50μs automatically)
-
                 self._send_json(200, {'result': 'ok'})
                 return
 
             # (end of set_leds)
-
-            # v1.4.6: /set_batch endpoint - atomic update for multiple LED ranges on same GPIO
-            if self.path == '/set_batch':
-                gpio_pin = int(data.get('gpio_pin', 18))
-                updates: List[Dict] = data.get('updates', [])
-
-                if not updates:
-                    self._send_json(400, {'error': 'no updates provided'})
-                    return
-
-                # Find max LED index needed for strip initialization
-                max_index = 0
-                for update in updates:
-                    start = int(update.get('index_start', 1))
-                    colors = update.get('colors', [])
-                    if colors:
-                        max_index = max(max_index, start - 1 + len(colors))
-                    else:
-                        end = int(update.get('index_end', start))
-                        max_index = max(max_index, end)
-
-                # Use first update's color order (all groups on same GPIO should have same order)
-                color_order = updates[0].get('color_order', 'GRB').upper().strip()
-                strip_type = STRIP_TYPES.get(color_order, DEFAULT_STRIP_TYPE)
-
-                strip = _get_strip(gpio_pin, max_index, strip_type)
-                if not strip:
-                    self._send_json(500, {'error': 'strip init failed'})
-                    return
-
-                # v1.4.12: No locking - reverted to original simple approach
-                # Apply all updates to the strip (no show() yet - batch them)
-                for update in updates:
-                    start = int(update.get('index_start', 1))
-                    colors = update.get('colors')
-
-                    if colors is not None:
-                        # Multi-LED update
-                        for i, color in enumerate(colors):
-                            led_index = start - 1 + i
-                            if led_index >= _strip_sizes[gpio_pin]:
-                                break
-                            if color is None:
-                                strip.setPixelColor(led_index, Color(0, 0, 0))
-                            else:
-                                r, g, b = color
-                                strip.setPixelColor(led_index, Color(int(r * 255), int(g * 255), int(b * 255)))
-                    else:
-                        # Solid color update
-                        end = int(update.get('index_end', start))
-                        r = float(update.get('r', 1.0))
-                        g = float(update.get('g', 1.0))
-                        b = float(update.get('b', 1.0))
-                        c = Color(int(r * 255), int(g * 255), int(b * 255))
-                        for i in range(start - 1, end):
-                            strip.setPixelColor(i, c)
-
-                # CRITICAL: Single atomic show() for all updates
-                strip.show()
-                # WS281x reset time handled by hardware (>50μs automatically)
-
-                if not _QUIET_MODE:
-                    _logger.info(f"Applied set_batch gpio={gpio_pin} updates={len(updates)}")
-
-                self._send_json(200, {'result': 'ok'})
-                return
 
             # /init_strip endpoint: allows pre-initialization for diagnostics
             if self.path == '/init_strip':
@@ -455,9 +373,7 @@ def main():
     server_address = (args.host, args.port)
     _logger.info(f"Starting ws281x proxy on {args.host}:{args.port}")
     _logger.info(f"Python: {sys.executable} script: {Path(__file__).resolve()} pid: {os.getpid()}")
-    # v1.4.12: Reverted to ThreadingHTTPServer (original approach)
     httpd = ThreadingHTTPServer(server_address, Handler)
-    _logger.info("Using ThreadingHTTPServer (requests handled in parallel)")
 
     # Start watchdog thread if systemd available
     if SYSTEMD_AVAILABLE:

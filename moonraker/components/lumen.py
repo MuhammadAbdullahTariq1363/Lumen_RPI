@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.4.11"
+__version__ = "1.4.1"
 
 import asyncio
 import logging
@@ -27,7 +27,7 @@ if str(_component_dir) not in sys.path:
 from lumen_lib import (
     RGB, get_color, list_colors,
     EffectState,
-    LEDDriver, KlipperDriver, PWMDriver, GPIODriver, ProxyDriver, create_driver,
+    LEDDriver, KlipperDriver, PWMDriver, create_driver,
     PrinterState, PrinterEvent, StateDetector,
 )
 from lumen_lib.effects import EFFECT_REGISTRY
@@ -71,6 +71,17 @@ class Lumen:
         self.bed_y_min = 0.0
         self.bed_y_max = 300.0
 
+        # Macro tracking for state detection (v1.2.0)
+        self.macro_homing: List[str] = []
+        self.macro_meshing: List[str] = []
+        self.macro_leveling: List[str] = []
+        self.macro_probing: List[str] = []
+        self.macro_paused: List[str] = []
+        self.macro_cancelled: List[str] = []
+        self.macro_filament: List[str] = []
+        self._active_macro_state: Optional[str] = None  # Current macro-triggered state
+        self._macro_start_time: float = 0.0
+
         # LED groups, drivers, effects
         self.led_groups: Dict[str, Dict[str, Any]] = {}
         self.event_mappings: Dict[str, List[Dict[str, str]]] = {}
@@ -91,14 +102,6 @@ class Lumen:
 
         # v1.4.0 - Performance: Cache driver intervals to avoid isinstance() checks in hot path
         self._driver_intervals: Dict[str, Tuple[float, float]] = {}  # group_name -> (printing_interval, idle_interval)
-
-        # v1.4.1 - Frame skip detection for performance monitoring
-        self._last_frame_time = 0.0
-        self._frame_skip_count = 0
-        self._last_skip_warning = 0.0
-
-        # v1.4.2 - Track last logged intervals to reduce spam
-        self._last_logged_intervals: Optional[Tuple[float, ...]] = None
 
         # Load config and create drivers
         self._load_config()
@@ -123,10 +126,9 @@ class Lumen:
         self.server.register_event_handler("server:klippy_shutdown", self._on_klippy_shutdown)
         self.server.register_event_handler("server:klippy_disconnected", self._on_klippy_disconnected)
         self.server.register_event_handler("server:status_update", self._on_status_update)
+        self.server.register_event_handler("server:gcode_response", self._on_gcode_response)
         self.server.register_event_handler("server:exit", self._on_server_shutdown)
         self.state_detector.add_listener(self._on_event_change)
-
-        self._log_info("Event handlers registered")
         
         # Register API endpoints
         self.server.register_endpoint("/server/lumen/status", ["GET"], self._handle_status)
@@ -227,36 +229,28 @@ class Lumen:
         try:
             with open(path, 'r') as f:
                 lines = f.readlines()
-
-            self._log_info(f"[DEBUG] Config file loaded: {len(lines)} lines")
-
+            
             current_section = None
             current_section_line = 0
             current_data: Dict[str, str] = {}
-
+            
             for line_num, line in enumerate(lines, 1):
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
-
+                
                 if line.startswith('[') and line.endswith(']'):
                     if current_section:
                         self._process_section(current_section, current_data, current_section_line)
                     current_section = line[1:-1]
                     current_section_line = line_num
                     current_data = {}
-                    self._log_info(f"[DEBUG] Found section: [{current_section}]")
                 elif ':' in line and current_section:
                     key, value = line.split(':', 1)
                     # Strip inline comments (# ...)
                     if '#' in value:
                         value = value.split('#', 1)[0]
-                    key_stripped = key.strip()
-                    value_stripped = value.strip()
-                    current_data[key_stripped] = value_stripped
-                    # v1.4.6 DEBUG: Log macro setting parsing
-                    if key_stripped.startswith("macro_"):
-                        self._log_info(f"[DEBUG] Parsed {key_stripped}: '{value_stripped}'")
+                    current_data[key.strip()] = value.strip()
             
             if current_section:
                 self._process_section(current_section, current_data, current_section_line)
@@ -272,8 +266,10 @@ class Lumen:
         """Validate configuration and collect warnings."""
         available_colors = list_colors()
         valid_effects = set(EFFECT_REGISTRY.keys())
+        # v1.2.0 - Added macro-triggered states
         valid_events = {
-            "idle", "heating", "printing", "cooldown", "error", "bored", "sleep"
+            "idle", "heating", "printing", "cooldown", "error", "bored", "sleep",
+            "homing", "meshing", "leveling", "probing", "paused", "cancelled", "filament"
         }
 
         # Effects that require addressable LEDs (not compatible with PWM driver)
@@ -342,7 +338,7 @@ class Lumen:
             parts = section.split(None, 1)
             section_type = parts[0]
             section_name = parts[1] if len(parts) > 1 else None
-
+            
             if section_type == "lumen_settings":
                 self.temp_floor = float(data.get("temp_floor", self.temp_floor))
                 self.bored_timeout = float(data.get("bored_timeout", self.bored_timeout))
@@ -356,6 +352,14 @@ class Lumen:
                 self.bed_x_max = float(data.get("bed_x_max", self.bed_x_max))
                 self.bed_y_min = float(data.get("bed_y_min", self.bed_y_min))
                 self.bed_y_max = float(data.get("bed_y_max", self.bed_y_max))
+                # Macro tracking (v1.2.0) - comma-separated lists
+                self.macro_homing = self._parse_macro_list(data.get("macro_homing", ""))
+                self.macro_meshing = self._parse_macro_list(data.get("macro_meshing", ""))
+                self.macro_leveling = self._parse_macro_list(data.get("macro_leveling", ""))
+                self.macro_probing = self._parse_macro_list(data.get("macro_probing", ""))
+                self.macro_paused = self._parse_macro_list(data.get("macro_paused", ""))
+                self.macro_cancelled = self._parse_macro_list(data.get("macro_cancelled", ""))
+                self.macro_filament = self._parse_macro_list(data.get("macro_filament", ""))
             
             elif section_type == "lumen_effect" and section_name:
                 self.effect_settings[section_name] = data.copy()
@@ -388,6 +392,14 @@ class Lumen:
         except Exception as e:
             loc = f" (line {line_num})" if line_num else ""
             self._log_error(f"Error in section [{section}]{loc}: {e}")
+
+    def _parse_macro_list(self, value: str) -> List[str]:
+        """Parse comma-separated macro list and return uppercase list."""
+        if not value or not value.strip():
+            return []
+        # Split by comma, strip whitespace, convert to uppercase, filter empties
+        macros = [m.strip().upper() for m in value.split(",")]
+        return [m for m in macros if m]
 
     def _parse_effect_color(self, value: str) -> Dict[str, Any]:
         """Parse effect specification with optional inline parameters.
@@ -471,6 +483,8 @@ class Lumen:
 
     def _cache_driver_intervals(self) -> None:
         """Cache driver update intervals to avoid isinstance() checks in animation loop (v1.4.0 optimization)."""
+        from .lumen_lib.drivers import GPIODriver, ProxyDriver
+
         for group_name, driver in self.drivers.items():
             if isinstance(driver, (GPIODriver, ProxyDriver)):
                 # GPIO/Proxy drivers use FPS-based interval (60 Hz = 0.0167s)
@@ -497,8 +511,8 @@ class Lumen:
                 "webhooks": ["state", "state_message"],
                 "print_stats": ["state", "filename", "info"],
                 "display_status": ["progress", "message"],
-                "heater_bed": ["temperature", "target", "power"],
-                "extruder": ["temperature", "target", "power"],
+                "heater_bed": ["temperature", "target"],
+                "extruder": ["temperature", "target"],
                 "idle_timeout": ["state"],
                 "toolhead": ["position"],
                 # v1.3.0 - Optional sensors (graceful if not present)
@@ -511,8 +525,8 @@ class Lumen:
                 "webhooks": ["state"],
                 "print_stats": ["state", "filename"],
                 "display_status": ["progress"],
-                "heater_bed": ["temperature", "target", "power"],
-                "extruder": ["temperature", "target", "power"],
+                "heater_bed": ["temperature", "target"],
+                "extruder": ["temperature", "target"],
                 "idle_timeout": ["state"],
                 "toolhead": ["position"],
                 # v1.3.0 - Optional sensors
@@ -522,7 +536,7 @@ class Lumen:
             if result:
                 self.printer_state.update_from_status(result)
                 self._log_debug(f"Initial state: print={self.printer_state.print_state}, bed_target={self.printer_state.bed_target}")
-
+            
             # Detect current event from queried state
             event = self.state_detector.update(self.printer_state)
             if event:
@@ -565,13 +579,96 @@ class Lumen:
                 self._log_error(f"Failed to turn off {name}: {e}")
 
     async def _on_status_update(self, status: Dict[str, Any]) -> None:
-        """Handle status updates from Klipper."""
         self.printer_state.update_from_status(status)
+
+        # v1.4.1: Check for macro timeout (safety - clear after 2 minutes)
+        if self._active_macro_state and self._macro_start_time > 0:
+            if time.time() - self._macro_start_time > 120.0:
+                self._log_debug(f"Macro timeout: {self._active_macro_state} (120s elapsed)")
+                self._active_macro_state = None
+                self._macro_start_time = 0.0
+                self.printer_state.active_macro_state = None
+                self.printer_state.macro_start_time = 0.0
 
         new_event = self.state_detector.update(self.printer_state)
         if new_event:
             task = asyncio.create_task(self._apply_event(new_event))
             task.add_done_callback(self._task_exception_handler)
+
+    async def _on_gcode_response(self, response: str) -> None:
+        """Handle G-code responses to detect macro execution (v1.2.0)."""
+        if not self.klippy_ready:
+            return
+
+        # v1.4.1: CRITICAL - Ignore our own LUMEN messages to prevent infinite loop
+        if response.startswith("LUMEN") or response.startswith("// LUMEN"):
+            return
+
+        # v1.4.1: Skip probe results and most comment lines (noise reduction)
+        # These flood the logs and don't contain macro names
+        if response.startswith("// probe at") or response.startswith("probe at"):
+            return
+
+        # v1.4.1: Detect macro completion messages and clear macro state
+        completion_markers = {
+            "meshing": ["// Mesh Bed Leveling Complete", "// mesh bed leveling complete"],
+            "homing": ["// Homing Complete", "// homing complete"],
+            "leveling": ["// Gantry Leveling Complete", "// gantry leveling complete",
+                        "// Z-Tilt Adjust Complete", "// z-tilt adjust complete"],
+            "probing": ["// Probe Calibration Complete", "// probe calibration complete"],
+        }
+
+        if self._active_macro_state:
+            markers = completion_markers.get(self._active_macro_state, [])
+            for marker in markers:
+                if marker.lower() in response.lower():
+                    self._log_debug(f"Macro completion detected: {self._active_macro_state}")
+                    self._active_macro_state = None
+                    self._macro_start_time = 0.0
+                    self.printer_state.active_macro_state = None
+                    self.printer_state.macro_start_time = 0.0
+
+                    # Force state detector to re-evaluate (return to normal state cycle)
+                    new_event = self.state_detector.update(self.printer_state)
+                    if new_event:
+                        task = asyncio.create_task(self._apply_event(new_event))
+                        task.add_done_callback(self._task_exception_handler)
+                    return
+
+        # Convert response to uppercase for case-insensitive matching
+        response_upper = response.upper()
+
+        # Check each macro type
+        macro_map = {
+            "homing": self.macro_homing,
+            "meshing": self.macro_meshing,
+            "leveling": self.macro_leveling,
+            "probing": self.macro_probing,
+            "paused": self.macro_paused,
+            "cancelled": self.macro_cancelled,
+            "filament": self.macro_filament,
+        }
+
+        for state_name, macro_list in macro_map.items():
+            if not macro_list:
+                continue
+
+            for macro in macro_list:
+                if macro in response_upper:
+                    # Macro detected - activate macro state
+                    self._active_macro_state = state_name
+                    self._macro_start_time = time.time()
+                    # Update PrinterState with macro info
+                    self.printer_state.active_macro_state = state_name
+                    self.printer_state.macro_start_time = self._macro_start_time
+                    self._log_debug(f"Macro detected: {macro} → state: {state_name}")
+
+                    # Force state detector to re-evaluate with macro state active
+                    new_event = self.state_detector.update(self.printer_state)
+                    if new_event:
+                        task = asyncio.create_task(self._apply_event(new_event))
+                        task.add_done_callback(self._task_exception_handler)
+                    break
 
     def _on_event_change(self, event: PrinterEvent) -> None:
         """Called when printer event changes."""
@@ -587,105 +684,22 @@ class Lumen:
         if event_name not in self.event_mappings:
             self._log_debug(f"No mappings for event: {event_name}")
             return
-
+        
         self._log_debug(f"Applying event: {event_name} to {len(self.event_mappings[event_name])} groups")
-
-        # v1.4.11: Collect immediate effect updates for batching ProxyDrivers
-        immediate_updates = []  # List of (driver, group_name, mapping, effect_color)
-
+        
         for mapping in self.event_mappings[event_name]:
             group_name = mapping["group"]
-
+            
             driver = self.drivers.get(group_name)
             if not driver:
                 self._log_debug(f"No driver for group: {group_name}")
                 continue
-
-            # Collect immediate effect info for batching later
-            immediate_updates.append((driver, group_name, mapping))
-
-        # v1.4.11: Apply immediate visual feedback with batching for ProxyDrivers
-        await self._apply_immediate_effects(immediate_updates)
-
-        # Now update effect states for all groups
-        for driver, group_name, mapping in immediate_updates:
-            await self._apply_effect(group_name, driver, mapping, skip_immediate=True)
+            
+            await self._apply_effect(group_name, driver, mapping)
 
         await self._ensure_animation_loop()
-
-    async def _apply_immediate_effects(self, updates: List[Tuple[LEDDriver, str, Dict[str, Any]]]) -> None:
-        """
-        Apply immediate visual feedback for effect changes, with batching for ProxyDrivers.
-
-        v1.4.11: This ensures ProxyDrivers sharing a GPIO pin update atomically,
-        preventing visual glitches during state transitions.
-        """
-        from .lumen_lib.drivers import ProxyDriver
-
-        # Group ProxyDrivers by GPIO pin for batching
-        gpio_batches = {}  # gpio_pin -> [(driver, group_name, color)]
-        non_proxy_updates = []  # [(driver, group_name, color)]
-
-        # First pass: calculate colors for all effects
-        for driver, group_name, mapping in updates:
-            effect = mapping["effect"]
-            color_name = mapping.get("color")
-
-            # Get base color
-            if color_name:
-                from .lumen_lib.colors import get_color
-                base_r, base_g, base_b = get_color(color_name)
-            else:
-                base_r, base_g, base_b = (1.0, 1.0, 1.0)
-
-            r = base_r * self.max_brightness
-            g = base_g * self.max_brightness
-            b = base_b * self.max_brightness
-
-            if isinstance(driver, ProxyDriver):
-                gpio_pin = driver.gpio_pin
-                if gpio_pin not in gpio_batches:
-                    gpio_batches[gpio_pin] = []
-                gpio_batches[gpio_pin].append((driver, group_name, effect, r, g, b))
-            else:
-                non_proxy_updates.append((driver, group_name, effect, r, g, b))
-
-        # Apply non-proxy updates immediately (no batching needed)
-        for driver, group_name, effect, r, g, b in non_proxy_updates:
-            if effect == "off":
-                await driver.set_off()
-            else:
-                await driver.set_color(r, g, b)
-
-        # Apply batched ProxyDriver updates atomically
-        for gpio_pin, batch in gpio_batches.items():
-            if len(batch) == 1:
-                # Single group on this GPIO - no batching needed
-                driver, group_name, effect, r, g, b = batch[0]
-                if effect == "off":
-                    await driver.set_off()
-                else:
-                    await driver.set_color(r, g, b)
-            else:
-                # Multiple groups share GPIO - use atomic batch update
-                batch_updates = []
-                for driver, group_name, effect, r, g, b in batch:
-                    if effect == "off":
-                        r, g, b = 0.0, 0.0, 0.0
-                    batch_updates.append({
-                        'index_start': driver.index_start,
-                        'index_end': driver.index_end,
-                        'r': r,
-                        'g': g,
-                        'b': b,
-                        'color_order': driver.color_order,
-                    })
-
-                # Send all updates in one atomic HTTP request
-                if batch_updates and hasattr(batch[0][0], 'set_batch'):
-                    await batch[0][0].set_batch(batch_updates)
-
-    async def _apply_effect(self, group_name: str, driver: LEDDriver, mapping: Dict[str, Any], skip_immediate: bool = False) -> None:
+    
+    async def _apply_effect(self, group_name: str, driver: LEDDriver, mapping: Dict[str, Any]) -> None:
         """Apply effect to a driver.
         
         Args:
@@ -761,21 +775,19 @@ class Lumen:
                      end_color[1] * self.max_brightness, 
                      end_color[2] * self.max_brightness)
         
-        # v1.4.11: Apply immediate effects only if not already handled by batching
-        if not skip_immediate:
-            # Apply immediate effects FIRST (before updating state)
-            # This ensures the driver shows the correct state immediately
-            if effect == "off":
-                await driver.set_off()
-            elif effect == "solid":
-                await driver.set_color(r, g, b)
-            elif effect in ("pulse", "heartbeat", "disco"):
-                await driver.set_color(r, g, b)
-            else:
-                await driver.set_color(r, g, b)
+        # Apply immediate effects FIRST (before updating state)
+        # This ensures the driver shows the correct state immediately
+        if effect == "off":
+            await driver.set_off()
+        elif effect == "solid":
+            await driver.set_color(r, g, b)
+        elif effect in ("pulse", "heartbeat", "disco"):
+            await driver.set_color(r, g, b)
+        else:
+            await driver.set_color(r, g, b)
 
         # Update effect state AFTER applying immediate effect
-        # v1.4.1: This ensures user sees immediate visual feedback before animation loop starts
+        # This prevents race condition with animation loop
         state = self.effect_states.get(group_name)
         if state:
             # Clear old cached effect instance if effect type changed
@@ -905,12 +917,11 @@ class Lumen:
 
                 coordinated.add(group_name)
 
-                # v1.4.2: Debug logging removed - too spammy at 60 FPS
-                # self._log_debug(
-                #     f"Chase {chase_num} ({group_name}): {led_count} LEDs, "
-                #     f"direction={direction}, electrical={index_start}→{index_end}, "
-                #     f"ring_pos={len(circular_led_map)-led_count}→{len(circular_led_map)-1}"
-                # )
+                self._log_debug(
+                    f"Chase {chase_num} ({group_name}): {led_count} LEDs, "
+                    f"direction={direction}, electrical={index_start}→{index_end}, "
+                    f"ring_pos={len(circular_led_map)-led_count}→{len(circular_led_map)-1}"
+                )
 
         if not circular_led_map:
             return coordinated
@@ -936,16 +947,16 @@ class Lumen:
             master_state, now, total_leds, state_data
         )
 
-        # v1.4.2: Debug logging removed - too spammy at 60 FPS
-        # if hasattr(chase_effect, '_predator_pos'):
-        #     self._log_debug(
-        #         f"Multi-chase: total_leds={total_leds}, "
-        #         f"predator_pos={chase_effect._predator_pos:.1f}, "
-        #         f"prey_pos={chase_effect._prey_pos:.1f}, "
-        #         f"predator_vel={chase_effect._predator_vel:.1f}, "
-        #         f"prey_vel={chase_effect._prey_vel:.1f}, "
-        #         f"speed={master_state.speed}"
-        #     )
+        # Debug logging for chase coordination
+        if hasattr(chase_effect, '_predator_pos'):
+            self._log_debug(
+                f"Multi-chase: total_leds={total_leds}, "
+                f"predator_pos={chase_effect._predator_pos:.1f}, "
+                f"prey_pos={chase_effect._prey_pos:.1f}, "
+                f"predator_vel={chase_effect._predator_vel:.1f}, "
+                f"prey_vel={chase_effect._prey_vel:.1f}, "
+                f"speed={master_state.speed}"
+            )
 
         if not needs_update:
             return coordinated
@@ -968,10 +979,9 @@ class Lumen:
             if not driver or group_name not in group_electrical_colors:
                 continue
 
-            # Skip Klipper/PWM drivers during printing - G-code queue is busy
-            if isinstance(driver, (KlipperDriver, PWMDriver)):
-                if is_printing:
-                    continue
+            # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked)
+            if self._active_macro_state and isinstance(driver, KlipperDriver):
+                continue
 
             group_cfg = self.led_groups.get(group_name, {})
             index_start = int(group_cfg.get('index_start', 1))
@@ -992,8 +1002,7 @@ class Lumen:
             try:
                 if hasattr(driver, 'set_leds'):
                     await driver.set_leds(electrical_colors)
-                    # v1.4.2: Debug logging removed - too spammy at 60 FPS
-                    # self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (direction={direction})")
+                    self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (direction={direction})")
             except Exception as e:
                 self._log_error(f"Multi-chase error in {group_name}: {e}")
 
@@ -1060,12 +1069,6 @@ class Lumen:
                     'bed_y_max': self.bed_y_max,
                 }
 
-                # v1.4.4: Effect-aware adaptive FPS - static effects don't need high update rates
-                # Categorize effects by update frequency requirements
-                STATIC_EFFECTS = {'solid', 'off'}  # 5 FPS sufficient
-                SLOW_EFFECTS = {'pulse', 'heartbeat', 'thermal', 'progress'}  # 20 FPS sufficient
-                FAST_EFFECTS = {'disco', 'rainbow', 'fire', 'comet', 'chase', 'kitt'}  # 30-40 FPS target
-
                 # Collect intervals from all active animated groups
                 intervals = []
 
@@ -1076,14 +1079,10 @@ class Lumen:
                     coordinated_groups = await self._render_multi_group_chase(chase_groups, now, is_printing)
 
                     # Add intervals for coordinated chase groups (v1.4.0: use cached intervals)
-                    # v1.4.4: Chase is fast effect, use driver interval as-is
                     for group_name in coordinated_groups:
                         if group_name in self._driver_intervals:
                             printing_interval, idle_interval = self._driver_intervals[group_name]
                             intervals.append(printing_interval if is_printing else idle_interval)
-
-                # v1.4.6: Collect updates by GPIO pin for batching (prevents flickering on shared pins)
-                gpio_batches = {}  # {gpio_pin: [(driver, colors, group_name), ...]}
 
                 for group_name, state in self.effect_states.items():
                     # Skip groups that are part of multi-group chase coordination
@@ -1099,28 +1098,14 @@ class Lumen:
                     if not driver:
                         continue
 
-                    # Skip Klipper/PWM drivers during printing - G-code queue is busy
-                    if isinstance(driver, (KlipperDriver, PWMDriver)):
-                        if is_printing:
-                            continue
+                    # v1.4.1: Skip Klipper drivers during macro states (G-code queue blocked, causes timeout spam)
+                    if self._active_macro_state and isinstance(driver, KlipperDriver):
+                        continue
 
                     # v1.4.0: Use cached driver interval (avoids isinstance() check in hot path)
-                    # v1.4.4: Apply effect-aware FPS scaling to reduce unnecessary updates
                     if group_name in self._driver_intervals:
                         printing_interval, idle_interval = self._driver_intervals[group_name]
-                        base_interval = printing_interval if is_printing else idle_interval
-
-                        # Scale interval based on effect complexity
-                        if state.effect in STATIC_EFFECTS:
-                            # Static effects: 5 FPS sufficient (0.2s interval)
-                            driver_interval = max(base_interval, 0.2)
-                        elif state.effect in SLOW_EFFECTS:
-                            # Slow animations: 10 FPS max (0.1s interval) - v1.4.10: reduced to prevent queue backup
-                            driver_interval = max(base_interval, 0.1)
-                        else:
-                            # Fast animations (disco, rainbow, fire, comet, chase, kitt): use full driver speed
-                            driver_interval = base_interval
-
+                        driver_interval = printing_interval if is_printing else idle_interval
                         intervals.append(driver_interval)
                     else:
                         continue  # Skip if interval not cached (shouldn't happen)
@@ -1166,64 +1151,22 @@ class Lumen:
                         if state.effect in ("disco",):
                             state.last_update = now
 
-                        # v1.4.6: Collect ProxyDriver updates for batching by GPIO pin
-                        if isinstance(driver, ProxyDriver):
-                            gpio_pin = driver.gpio_pin
-                            if gpio_pin not in gpio_batches:
-                                gpio_batches[gpio_pin] = []
-                            gpio_batches[gpio_pin].append((driver, colors, group_name))
-                        else:
-                            # Non-proxy drivers (Klipper, PWM, GPIO): apply immediately
-                            if len(colors) == 1:
-                                # Single color effect (pulse, heartbeat, solid, off)
-                                color = colors[0]
-                                if color is None:
-                                    await driver.set_off()
-                                else:
-                                    r, g, b = color
-                                    await driver.set_color(r, g, b)
+                        # Apply colors to driver
+                        if len(colors) == 1:
+                            # Single color effect (pulse, heartbeat, solid, off)
+                            color = colors[0]
+                            if color is None:
+                                await driver.set_off()
                             else:
-                                # Multi-LED effect (disco, thermal, progress)
-                                if hasattr(driver, 'set_leds'):
-                                    await driver.set_leds(colors)
+                                r, g, b = color
+                                await driver.set_color(r, g, b)
+                        else:
+                            # Multi-LED effect (disco, thermal, progress)
+                            if hasattr(driver, 'set_leds'):
+                                await driver.set_leds(colors)
 
                     except Exception as e:
                         self._log_error(f"Animation error in {group_name}: {e}")
-
-                # v1.4.6: Apply batched GPIO updates atomically (prevents flickering)
-                for gpio_pin, batch in gpio_batches.items():
-                    try:
-                        if len(batch) == 1:
-                            # Only one group on this GPIO pin - no batching needed
-                            driver, colors, _ = batch[0]
-                            if len(colors) == 1:
-                                color = colors[0]
-                                if color is None:
-                                    await driver.set_off()
-                                else:
-                                    r, g, b = color
-                                    await driver.set_color(r, g, b)
-                            else:
-                                if hasattr(driver, 'set_leds'):
-                                    await driver.set_leds(colors)
-                        else:
-                            # TEST: Bypass batching - use individual calls like chase does
-                            # Multiple groups share this GPIO pin - send individual updates
-                            for driver, colors, group_name in batch:
-                                if len(colors) == 1:
-                                    # Single color effect (pulse, heartbeat, solid, off)
-                                    color = colors[0]
-                                    if color is None:
-                                        await driver.set_off()
-                                    else:
-                                        r, g, b = color
-                                        await driver.set_color(r, g, b)
-                                else:
-                                    # Multi-LED effect (disco, thermal, progress)
-                                    if hasattr(driver, 'set_leds'):
-                                        await driver.set_leds(colors)
-                    except Exception as e:
-                        self._log_error(f"GPIO batch error on pin {gpio_pin}: {e}")
 
                 # Use the smallest interval (highest update rate needed)
                 # This ensures fast drivers get their updates while slow drivers still work
@@ -1231,26 +1174,9 @@ class Lumen:
                 # Clamp to minimum 1ms (1000Hz max) to prevent busy-looping
                 interval = max(interval, 0.001)
 
-                # v1.4.2: Log intervals only when they change to reduce spam
-                if intervals:
-                    current_intervals = tuple(intervals)  # Convert to tuple for comparison
-                    if current_intervals != self._last_logged_intervals:
-                        self._log_debug(f"Animation intervals: {intervals}, using min={interval:.4f}s ({1.0/interval:.1f} FPS)")
-                        self._last_logged_intervals = current_intervals
-
-                # v1.4.1: Frame skip detection - warn if system is overloaded
-                if self._last_frame_time > 0:
-                    actual_interval = now - self._last_frame_time
-                    if actual_interval > interval * 1.5:  # 50% over target
-                        self._frame_skip_count += 1
-                        # Warn every 10 seconds if skipping frames
-                        if now - self._last_skip_warning > 10.0:
-                            expected_fps = 1.0 / interval
-                            actual_fps = 1.0 / actual_interval
-                            self._log_warning(f"Frame skip detected: expected {expected_fps:.1f} FPS, actual {actual_fps:.1f} FPS (skipped {self._frame_skip_count} frames in last 10s)")
-                            self._last_skip_warning = now
-                            self._frame_skip_count = 0
-                self._last_frame_time = now
+                # Debug: Log intervals during printing
+                if is_printing and intervals:
+                    self._log_debug(f"Animation intervals: {intervals}, using min={interval:.4f}s ({1.0/interval:.1f} FPS)")
 
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
@@ -1324,18 +1250,12 @@ class Lumen:
                     await self._animation_task
                 except asyncio.CancelledError:
                     pass
-
+        
         # Reload config
         self._load_config()
         self._create_drivers()
 
-        # v1.4.1: Rebuild driver interval cache (required for animation loop)
-        self._cache_driver_intervals()
-
         # Clear caches to prevent memory leaks
-        # v1.4.1: Clear chase coordination cache separately to avoid memory leak
-        self.effect_instances = {k: v for k, v in self.effect_instances.items()
-                                 if not k.startswith("_multi_chase:")}
         self.effect_instances.clear()
         self._last_thermal_log.clear()
 

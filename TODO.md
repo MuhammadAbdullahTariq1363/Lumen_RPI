@@ -149,72 +149,6 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## ⚡ v1.4.4 - Effect-Aware Adaptive FPS (December 2025)
-
-### Performance Improvements ✅
-- [x] **Effect-aware FPS scaling** - Intelligent update rates based on effect complexity
-  - Static effects (solid, off): 5 FPS maximum - no animation needed
-  - Slow effects (pulse, heartbeat, thermal, progress): 20 FPS maximum - smooth gradual changes
-  - Fast effects (disco, rainbow, fire, comet, chase, kitt): Full driver speed (30-40 FPS)
-- [x] **Optimized HTTP request distribution** - Reduces unnecessary updates for static/slow effects
-- [x] **CPU/bandwidth conservation** - Frees resources for fast animations
-
-### Results
-- v1.4.3: 28-38 FPS achieved (HTTP bottleneck at 180 req/s with 3 proxy groups)
-- v1.4.4: Adaptive scaling reduces request load, allows fast effects to reach higher FPS
-- Smart resource allocation: static effects don't waste updates, fast effects get priority
-
----
-
-## ⚡ v1.4.3 - 60 FPS Performance Optimization (December 2025)
-
-### Performance Improvements ✅
-- [x] **ProxyDriver timeout reduction** - Reduced from 0.1s to 0.01s (10ms) for 60 FPS target
-- [x] **WS281x proxy quiet mode** - Suppress verbose logging (720 log lines/sec → errors only)
-- [x] **Upgrade script** - Created upgrade_v1.4.3.sh for easy deployment
-
-### Results
-- v1.4.2: 26-33 FPS achieved (10x improvement from v1.4.1)
-- v1.4.3: 28-38 FPS achieved with reduced timeout + logging overhead
-- CPU/Memory headroom available (32% / 9% usage on Pi)
-
----
-
-## ✅ v1.4.2 - Macro Tracking Investigation RESOLVED (December 2025)
-
-### Investigation Results
-- [x] **Macro tracking event handler working correctly** - v1.4.2 debug logging confirmed `_on_gcode_response()` IS being called
-  - Fresh install testing validated all macro-triggered states functional
-  - G28 (homing), BED_MESH_CALIBRATE (meshing), filament sensor events all detected correctly
-  - Event handler registration at line 134 working as designed
-  - v1.4.1 filters preventing infinite loops working perfectly
-  - Debug logging can be removed in future cleanup (no longer needed)
-
----
-
-## ✅ v1.4.1 - Critical Macro Tracking Fixes (December 2025)
-
-### Critical Bug Fixes
-- [x] **Infinite loop console spam** - Filter LUMEN messages from macro detection (lumen.py:603-605)
-- [x] **Malformed G-code debug** - Filter probe result messages (lumen.py:607-610)
-- [x] **Klipper driver timeout spam** - Skip during macro states (lumen.py:983-984, 1102-1103)
-- [x] **GPIO animation slowdown** - Treat macros as non-printing for intervals (lumen.py:1048)
-- [x] **PWM driver timeout spam** - Extended skip logic to PWMDriver (lumen.py:983, 1104)
-- [x] **Config reload issues** - Rebuild interval cache, clear macro state (lumen.py:1256-1267)
-- [x] **Memory leak on reload** - Clear chase cache entries (lumen.py:1271-1272)
-
-### New Features
-- [x] **Macro completion detection** - Automatic state return (lumen.py:612-636)
-- [x] **Macro timeout** - 120-second safety timeout (lumen.py:584-591)
-- [x] **Frame skip detection** - Warns on FPS drops (lumen.py:1188-1200)
-
-### Code Quality Improvements
-- [x] **Paused state consistency** - Macro tracking only (paused.py:37-39)
-- [x] **Color lookup cache** - LRU cache added (colors.py:105)
-- [x] **Clarified comments** - Improved accuracy (lumen.py:795)
-
----
-
 ## 🔧 v1.5.0 - Quality of Life
 
 ### Configuration Enhancements
@@ -225,9 +159,8 @@ Active development tasks and future enhancements for LUMEN.
 - [ ] **WebSocket notifications** - Broadcast state changes to Mainsail/Fluidd
 - [ ] **Macro integration** - LUMEN_SET_RELOAD reload lumen after a .cfg change
 
-
 ### Debugging Tools
-- [ ] **Effect/state testing mode** - Test effects/states using simple macros. Macro to start testing, macros to change to next state or back a state, macros to change to next effect or back an effect. A macro to restart lumen to go back to normal Those 6 macros should make testing easier.
+- [ ] **Effect/state testing mode** - Test effects/states using simple macros. Macro to start testing, macros to change to next state or back a state, macros to change to next effect or back an effect. A macro to restart lumen to go back to normal Those 6 macros should make testing easier. 
 - [ ] **FPS counter** - Report actual achieved frame rate
 - [ ] **Performance profiling** - Identify slow effects or bottlenecks
 
@@ -250,8 +183,8 @@ Active development tasks and future enhancements for LUMEN.
 
 ### Performance
 - [ ] Optimize disco effect random seed (currently uses time.time())
-- [x] ~~Add frame skip detection for overloaded systems~~ (Completed in v1.4.1)
-- [x] ~~Consider LRU cache for color lookups~~ (Completed in v1.4.1)
+- [ ] Add frame skip detection for overloaded systems
+- [ ] Consider LRU cache for color lookups
 
 ### Code Quality
 - [ ] Add type stubs for better IDE support
@@ -280,7 +213,7 @@ Active development tasks and future enhancements for LUMEN.
 - **Minor releases (v1.x.0)**: New features, backward compatible
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.4.4 (December 2025)
+**Current stable:** v1.4.0 (December 2025)
 **In development:** v1.5.0 (Quality of Life)
 **Next planned release:** v1.5.0 (Quality of Life) - Q1 2026
 
@@ -311,6 +244,6 @@ Random ideas not yet prioritized:
 
 ---
 
-**Last Updated:** December 26, 2025
-**Current Version:** v1.4.8 (beta - macro tracking investigation)
-**Status:** ⚠️ v1.4.8 INVESTIGATION COMPLETE - Discovered that fully automatic macro detection is impossible for silent macros (G28, etc.). "Loud" macros (Z_TILT_ADJUST, BED_MESH_CALIBRATE) auto-detect via gcode responses. Silent macros require RESPOND messages. LUMEN_WAKE command planned for v1.5.0 to simplify integration.
+**Last Updated:** December 25, 2025
+**Current Version:** v1.4.1 (stable)
+**Status:** v1.4.1 Stable - Production tested on Voron Trident | Fixed critical macro tracking bugs (infinite loop console spam, Klipper driver timeout spam during macros), added 30-second macro timeout, selective driver updates during macro states

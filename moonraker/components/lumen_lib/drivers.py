@@ -296,8 +296,6 @@ class ProxyDriver(LEDDriver):
     """
     Driver communicating with a helper ws281x proxy server running as root.
     The proxy avoids needing Moonraker to run with raw IO privileges.
-
-    v1.4.12: Reverted to simple fire-and-forget async requests (original approach).
     """
     def __init__(self, name: str, config: Dict[str, Any], server: Any):
         super().__init__(name, config, server)
@@ -310,23 +308,28 @@ class ProxyDriver(LEDDriver):
         # Color order for WS281x strips (most common is GRB for WS2812B)
         self.color_order = config.get("color_order", "GRB").upper().strip()
 
+        # Note: Strip pre-initialization will happen on first use.
+        # We can't create tasks in __init__ since we're not in an async context yet.
+
     def _proxy_url(self, path: str) -> str:
         return f"http://{self.proxy_host}:{self.proxy_port}{path}"
 
-    async def _post(self, path: str, payload: Dict[str, Any]) -> None:
-        """TEST: Synchronous HTTP POST - wait for completion before returning."""
+    async def _post(self, path: str, payload: Dict[str, Any]) -> bool:
         url = self._proxy_url(path)
         data = json.dumps(payload).encode('utf-8')
 
         def _send():
             try:
                 req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                urllib.request.urlopen(req, timeout=1.0)  # Longer timeout, actually wait
-            except Exception:
-                pass  # Silent failure - proxy updates are best-effort
+                with urllib.request.urlopen(req, timeout=2) as resp:
+                    if resp.getcode() == 200:
+                        return True
+            except Exception as e:
+                _logger.warning(f"[LUMEN] ProxyDriver failed to connect to {url}: {e}")
+                return False
+            return False
 
-        # WAIT for completion - no fire-and-forget
-        await asyncio.to_thread(_send)
+        return await asyncio.to_thread(_send)
 
     async def set_color(self, r: float, g: float, b: float) -> None:
         payload = {
@@ -338,7 +341,7 @@ class ProxyDriver(LEDDriver):
             "b": b,
             "color_order": self.color_order,
         }
-        await self._post('/set_color', payload)  # Returns immediately now
+        await self._post('/set_color', payload)
 
     async def set_leds(self, colors: List[Optional[RGB]]) -> None:
         payload = {
@@ -347,26 +350,10 @@ class ProxyDriver(LEDDriver):
             "colors": colors,
             "color_order": self.color_order,
         }
-        await self._post('/set_leds', payload)  # Returns immediately now
+        await self._post('/set_leds', payload)
 
     async def set_off(self) -> None:
         await self.set_color(0.0, 0.0, 0.0)
-
-    async def set_batch(self, updates: List[Dict[str, Any]]) -> None:
-        """
-        v1.4.6: Batch multiple LED range updates into one atomic HTTP request.
-        This prevents flickering when multiple groups share the same GPIO pin.
-
-        Args:
-            updates: List of update dicts, each containing either:
-                - colors update: {index_start, colors, color_order}
-                - solid color update: {index_start, index_end, r, g, b, color_order}
-        """
-        payload = {
-            "gpio_pin": self.gpio_pin,
-            "updates": updates,
-        }
-        await self._post('/set_batch', payload)
 
 
 def create_driver(name: str, config: Dict[str, Any], server: Any) -> Optional[LEDDriver]:

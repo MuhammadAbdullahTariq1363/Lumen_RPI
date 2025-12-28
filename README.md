@@ -2,75 +2,48 @@
 
 **Real-time LED control for Klipper 3D printers via Moonraker**
 
-Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no complexity.
+Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
-[![Status](https://img.shields.io/badge/status-stable-green)]()
-[![Version](https://img.shields.io/badge/version-v1.5.0-blue)]()
+[![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
+[![Version](https://img.shields.io/badge/version-v1.4.1-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.5.0 Stable** - Simple, reliable temperature-based state detection. Macro tracking removed.
+> **v1.4.1 Release** - Fixed critical macro tracking bugs (infinite loop spam, Klipper driver timeout spam)
 
 ---
 
 ## Features
 
-- **7 Printer States** - Automatic detection: idle, heating, printing, cooldown, error, bored, sleep
+- **14 Printer States** - Automatic detection: idle, heating, printing, cooldown, error, bored, sleep, homing, meshing, leveling, probing, paused, cancelled, filament change
 - **12 LED Effects** - solid, pulse, heartbeat, disco, rainbow, fire, comet, chase, KITT scanner, thermal gradient, print progress bar, off
 - **Multi-Group Coordination** - Seamless animations across multiple LED strips with predator/prey chase behavior
 - **3 Driver Types** - GPIO (60fps smooth), Klipper SET_LED (MCU-attached), PWM (non-addressable)
-- **Chamber Temperature Support** - Thermal effect supports bed, extruder, and chamber temperature sources
-- **Filament Sensor Integration** - Automatic runout detection
+- **Chamber Temperature Support** - Thermal effect now supports bed, extruder, and chamber temperature sources
+- **Filament Sensor Integration** - Automatic runout detection triggers filament change state
 - **Modular Architecture** - Plugin-based effect and state systems for easy extension
 - **50+ Named Colors** - Aurora-compatible color palette
 - **Hot Reload** - Update config without restarting Moonraker
 - **Full API** - REST endpoints for status, testing, and control
-- **Production Ready** - Stable, tested, and reliable
+- **Production Ready** - Comprehensive testing on Voron Trident with multi-group animations and optimized performance
 
 ---
 
-## What's New in v1.5.0
+## What's New in v1.4.0
 
-### 🧹 **MAJOR CLEANUP** - Macro Tracking Removed
+### Performance Optimizations
+- **60 FPS driver interval caching** - Eliminated 240-300 `isinstance()` checks per second
+- **State data pre-building** - 93% reduction in dictionary operations per animation cycle
+- **Loop attribute caching** - Cached repeated lookups in chase, kitt, and fire effects
+- **Disco random selection** - Optimized from O(n log n) to O(k) algorithm
+- **HSV utility extraction** - Eliminated ~90 lines of duplicated color conversion code
 
-After extensive debugging revealed macro tracking caused more problems than it solved, **all macro tracking code has been completely removed**. LUMEN now focuses on what it does best: simple, reliable temperature-based state detection.
+### Critical Bug Fixes
+- **Disco effect crash fix** - Added bounds validation to prevent `ValueError` when `min_sparkle > max_sparkle`
+- **Thermal effect safety** - Added division by zero protection for edge cases
 
-#### What Changed
-- ❌ **Removed**: All 7 macro-triggered states (homing, meshing, leveling, probing, paused, cancelled, filament)
-- ❌ **Removed**: G-code response monitoring and parsing
-- ❌ **Removed**: Macro configuration requirements
-- ❌ **Removed**: Need for RESPOND messages in your macros
-- ✅ **Fixed**: Flickering during prints (caused by rapid state changes)
-- ✅ **Fixed**: Critical runtime errors from macro tracking
-- ✅ **Improved**: Performance (no message parsing overhead)
-- ✅ **Simplified**: Configuration (no macro settings needed)
-
-#### Why This Is Better
-**Problems with macro tracking (v1.2.0-v1.4.8):**
-- Added significant complexity for minimal benefit
-- Required users to modify their macros
-- Caused LED flickering during prints
-- Introduced hard-to-debug runtime errors
-- Made configuration confusing
-
-**Benefits of removal:**
-- Simpler, more reliable codebase
-- No user macro modifications required
-- Better performance, no flickering
-- Focus on core competency: temperature-based state detection
-- Easier to maintain and debug
-
-#### Migration from v1.4.x
-If you had macro tracking configured, simply remove these from your lumen.cfg:
-- Macro settings: `macro_homing`, `macro_meshing`, etc.
-- Macro events: `on_homing`, `on_meshing`, etc.
-- LUMEN macro calls from your Klipper macros
-
-Everything else stays the same!
-
-### Previous Release (v1.4.4) - Effect-Aware Adaptive FPS
-- Intelligent FPS scaling based on effect complexity
-- Static effects: 5 FPS, Slow effects: 20 FPS, Fast effects: 30-40 FPS
-- Optimized resource usage and better performance
+### Code Cleanup
+- Removed unused imports, dead telemetry code, and unused PWMDriver methods
+- Added error logging to silent exception handlers for better debugging
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
@@ -103,7 +76,7 @@ Edit `~/printer_data/config/lumen.cfg`:
 ```ini
 [lumen_settings]
 max_brightness: 0.4        # Global brightness limit (0.0-1.0)
-gpio_fps: 30               # Base animation frame rate for GPIO drivers (v1.4.4: adaptive scaling applied)
+gpio_fps: 60               # Animation frame rate for GPIO drivers
 
 [lumen_group chamber_leds]
 driver: proxy              # GPIO via proxy service (recommended, 60fps)
@@ -124,27 +97,6 @@ Then restart Moonraker:
 ```bash
 sudo systemctl restart moonraker
 ```
-
-### Macro Integration (Optional but Recommended)
-
-LUMEN automatically detects macros that print console output (Z_TILT_ADJUST, BED_MESH_CALIBRATE, etc.). For **silent macros** like G28, add RESPOND messages to enable LED state changes:
-
-```gcode
-[gcode_macro G28]
-rename_existing: G28.1
-gcode:
-    RESPOND MSG="LUMEN_HOMING_START"
-    G28.1 {rawparams}
-    RESPOND MSG="LUMEN_HOMING_END"
-```
-
-**Supported RESPOND messages**:
-- `LUMEN_HOMING_START` / `LUMEN_HOMING_END` - Triggers `on_homing` LED state
-- `LUMEN_MESHING_START` / `LUMEN_MESHING_END` - Triggers `on_meshing` (usually auto-detected)
-- `LUMEN_LEVELING_START` / `LUMEN_LEVELING_END` - Triggers `on_leveling` (usually auto-detected)
-- `LUMEN_PROBING_START` / `LUMEN_PROBING_END` - Triggers `on_probing`
-
-**Note**: Most macros work without modification. Only add RESPOND if your LEDs don't change during specific operations.
 
 ---
 
@@ -699,19 +651,9 @@ The uninstaller will:
 
 ## Performance
 
-### Effect-Aware Adaptive FPS (v1.4.4)
-LUMEN intelligently adjusts update rates based on effect complexity to optimize CPU and bandwidth:
-
-- **Static effects** (`solid`, `off`): 5 FPS maximum - no animation, minimal updates needed
-- **Slow effects** (`pulse`, `heartbeat`, `thermal`, `progress`): 20 FPS maximum - smooth gradual changes
-- **Fast effects** (`disco`, `rainbow`, `fire`, `comet`, `chase`, `kitt`): Full driver speed (30-40 FPS)
-
-This adaptive scaling reduces unnecessary HTTP requests for static/slow effects, freeing CPU/bandwidth for fast animations.
-
-### Driver Performance
-- **GPIO/Proxy Driver**: 30-40 FPS on fast animations, bypasses Klipper G-code queue
+- **GPIO Driver**: 60fps smooth animations, bypasses Klipper G-code queue
 - **Klipper Driver**: 0.1-5s update rate (slower during prints due to G-code queue)
-- **CPU Usage**: <1% on Raspberry Pi 4
+- **CPU Usage**: <1% on Raspberry Pi 4 at 60fps
 - **Memory**: ~50MB
 
 ---

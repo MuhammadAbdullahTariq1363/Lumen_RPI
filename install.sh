@@ -462,7 +462,6 @@ Before=moonraker.service
 [Service]
 Type=notify
 User=root
-Environment="WS281X_QUIET=1"
 ExecStart=${MOONRAKER_VENV}/bin/python ${PROXY_SCRIPT} --port ${PROXY_PORT} --lumen-cfg ${LUMEN_CFG}
 
 # Automatic restart on failure
