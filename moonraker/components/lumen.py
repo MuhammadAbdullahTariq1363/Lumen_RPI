@@ -582,13 +582,16 @@ class Lumen:
         from .lumen_lib.drivers import GPIODriver, ProxyDriver
 
         for group_name, driver in self.drivers.items():
+            driver_type = type(driver).__name__
             if isinstance(driver, (GPIODriver, ProxyDriver)):
                 # GPIO/Proxy drivers use FPS-based interval (60 Hz = 0.0167s)
                 interval = 1.0 / self.gpio_fps
                 self._driver_intervals[group_name] = (interval, interval)  # Same for printing and idle
+                self._log_debug(f"Group '{group_name}': {driver_type} → GPIO/Proxy interval={interval:.4f}s (FPS={self.gpio_fps})")
             else:
                 # Klipper/PWM drivers use slower intervals (respects G-code queue)
                 self._driver_intervals[group_name] = (self.update_rate_printing, self.update_rate)
+                self._log_debug(f"Group '{group_name}': {driver_type} → Klipper/PWM printing={self.update_rate_printing}s, idle={self.update_rate}s")
 
         self._log_debug(f"Cached driver intervals for {len(self._driver_intervals)} groups")
 
