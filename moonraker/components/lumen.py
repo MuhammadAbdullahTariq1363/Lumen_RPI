@@ -1309,9 +1309,7 @@ class Lumen:
                 # Clamp to maximum 1s to ensure responsive shutdown
                 interval = min(interval, 1.0)
 
-                # Debug: Log intervals during printing
-                if is_printing and next_update_times:
-                    self._log_debug(f"Next updates in: {[f'{(t-now):.3f}s' for t in sorted(next_update_times)[:3]]}, sleeping {interval:.4f}s")
+                # v1.5.0: Removed debug log spam (was logging every animation frame)
 
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:

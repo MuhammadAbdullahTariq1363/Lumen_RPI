@@ -32,7 +32,18 @@ class HeatingDetector(BaseStateDetector):
         status: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """Check if any heater is actively heating."""
+        """Check if any heater is actively heating.
+
+        v1.5.0: Don't exit heating state if print has started - let printing state
+        take over via priority system (printing=10, heating=20).
+        """
+
+        # v1.5.0: If print has started, let printing state take over (higher priority)
+        print_stats = status.get('print_stats', {})
+        ps_state = print_stats.get('state', '').lower()
+        if ps_state in ['printing', 'paused']:
+            # Print is active, heating state should yield to printing state
+            return False
 
         # Check extruder
         extruder = status.get('extruder', {})
