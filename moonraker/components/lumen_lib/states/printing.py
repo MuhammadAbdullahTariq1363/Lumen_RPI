@@ -25,6 +25,8 @@ class PrintingDetector(BaseStateDetector):
     priority = 10  # High priority (after error)
 
     TEMP_TOLERANCE = 3.0  # Degrees C tolerance for "at temp"
+    MIN_PRINT_TEMP = 200.0  # Degrees C - minimum extruder temp to consider "printing ready"
+                             # Below this, we're in PRINT_START prep (cartographer touch, probing, etc.)
 
     def detect(
         self,
@@ -71,6 +73,13 @@ class PrintingDetector(BaseStateDetector):
         has_temp_target = (ext_target > 0) or (bed_target > 0)
         if not has_temp_target:
             # No temp targets set during print - still in PRINT_START initialization
+            return False
+
+        # v1.5.0: Check if extruder is hot enough to actually be printing
+        # Below MIN_PRINT_TEMP, we're in PRINT_START prep (cartographer touch at 150°C, probing, meshing)
+        # Stay in heating state until we're actually ready to lay down plastic
+        if ext_temp < self.MIN_PRINT_TEMP:
+            # Extruder too cold for printing - still in prep phase
             return False
 
         # Check if all heaters with targets are at temperature
