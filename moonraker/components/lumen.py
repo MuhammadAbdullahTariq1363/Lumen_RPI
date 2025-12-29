@@ -27,7 +27,7 @@ if str(_component_dir) not in sys.path:
 from lumen_lib import (
     RGB, get_color, list_colors,
     EffectState,
-    LEDDriver, KlipperDriver, PWMDriver, create_driver,
+    LEDDriver, KlipperDriver, PWMDriver, GPIODriver, ProxyDriver, create_driver,
     PrinterState, PrinterEvent, StateDetector,
 )
 from lumen_lib.effects import EFFECT_REGISTRY
