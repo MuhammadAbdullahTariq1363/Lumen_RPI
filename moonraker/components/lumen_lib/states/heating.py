@@ -29,7 +29,7 @@ class HeatingDetector(BaseStateDetector):
     description = "Heaters warming up to target temperature"
     priority = 20
 
-    TEMP_TOLERANCE = 3.0  # Degrees C - considered "at temp" within this range
+    TEMP_TOLERANCE = 1.0  # Degrees C - stay in heating until this close to target
     HYSTERESIS_TIME = 10.0  # Seconds - stay in heating for this long even if targets drop
 
     def __init__(self):
@@ -64,7 +64,10 @@ class HeatingDetector(BaseStateDetector):
         ext_temp = extruder.get('temperature', 0)
         ext_target = extruder.get('target', 0)
 
-        if ext_target > 0 and (ext_temp + self.TEMP_TOLERANCE) < ext_target:
+        # v1.5.0 FIX: Stay in heating as long as ANY target is set
+        # User wants heating state for heat soak, maintaining temps, etc.
+        # Only exit when targets are cleared OR printing starts
+        if ext_target > 0:
             self._last_heating_time = time.time()
             return True
 
@@ -73,7 +76,7 @@ class HeatingDetector(BaseStateDetector):
         bed_temp = heater_bed.get('temperature', 0)
         bed_target = heater_bed.get('target', 0)
 
-        if bed_target > 0 and (bed_temp + self.TEMP_TOLERANCE) < bed_target:
+        if bed_target > 0:
             self._last_heating_time = time.time()
             return True
 
@@ -86,7 +89,7 @@ class HeatingDetector(BaseStateDetector):
         chamber_temp = chamber.get('temperature', 0)
         chamber_target = chamber.get('target', 0)
 
-        if chamber_target > 0 and (chamber_temp + self.TEMP_TOLERANCE) < chamber_target:
+        if chamber_target > 0:
             self._last_heating_time = time.time()
             return True
 
