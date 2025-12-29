@@ -296,6 +296,8 @@ class ProxyDriver(LEDDriver):
     """
     Driver communicating with a helper ws281x proxy server running as root.
     The proxy avoids needing Moonraker to run with raw IO privileges.
+
+    v1.5.0: Added retry logic, health tracking, and better error handling.
     """
     def __init__(self, name: str, config: Dict[str, Any], server: Any):
         super().__init__(name, config, server)
@@ -308,6 +310,13 @@ class ProxyDriver(LEDDriver):
         # Color order for WS281x strips (most common is GRB for WS2812B)
         self.color_order = config.get("color_order", "GRB").upper().strip()
 
+        # v1.5.0: Health tracking
+        self.consecutive_failures = 0
+        self.total_requests = 0
+        self.total_failures = 0
+        self.last_error: Optional[str] = None
+        self.is_healthy = True
+
         # Note: Strip pre-initialization will happen on first use.
         # We can't create tasks in __init__ since we're not in an async context yet.
 
@@ -315,21 +324,74 @@ class ProxyDriver(LEDDriver):
         return f"http://{self.proxy_host}:{self.proxy_port}{path}"
 
     async def _post(self, path: str, payload: Dict[str, Any]) -> bool:
+        """
+        Send POST request to proxy with retry logic and health tracking.
+
+        v1.5.0: Added exponential backoff retry, health tracking, and better error handling.
+
+        Args:
+            path: API endpoint path
+            payload: JSON payload
+
+        Returns:
+            True if successful, False if all retries failed
+        """
         url = self._proxy_url(path)
         data = json.dumps(payload).encode('utf-8')
+        self.total_requests += 1
 
-        def _send():
-            try:
-                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=2) as resp:
-                    if resp.getcode() == 200:
-                        return True
-            except Exception as e:
-                _logger.warning(f"[LUMEN] ProxyDriver failed to connect to {url}: {e}")
-                return False
+        # v1.5.0: Stop trying if we've had too many consecutive failures (backpressure)
+        if self.consecutive_failures >= 10:
+            # Silent failure to prevent log spam
             return False
 
-        return await asyncio.to_thread(_send)
+        max_retries = 3
+        for attempt in range(max_retries):
+            # Exponential backoff: 0s, 0.1s, 0.2s
+            if attempt > 0:
+                await asyncio.sleep(attempt * 0.1)
+
+            def _send():
+                try:
+                    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                    # v1.5.0: Reduced timeout to 1.0s (was 2.0s)
+                    with urllib.request.urlopen(req, timeout=1.0) as resp:
+                        if resp.getcode() == 200:
+                            return True, None
+                except Exception as e:
+                    return False, str(e)
+                return False, "Unknown error"
+
+            try:
+                success, error = await asyncio.to_thread(_send)
+                if success:
+                    # v1.5.0: Success - reset failure counter and update health
+                    if self.consecutive_failures > 0:
+                        _logger.info(f"[LUMEN] ProxyDriver {self.name} recovered (was {self.consecutive_failures} failures)")
+                    self.consecutive_failures = 0
+                    self.is_healthy = True
+                    return True
+                else:
+                    self.last_error = error
+            except Exception as e:
+                self.last_error = str(e)
+
+        # v1.5.0: All retries failed - update health tracking
+        self.total_failures += 1
+        self.consecutive_failures += 1
+
+        # Log warning on first failure or every 10th consecutive failure
+        if self.consecutive_failures == 1 or self.consecutive_failures % 10 == 0:
+            _logger.warning(
+                f"[LUMEN] ProxyDriver {self.name} failed after {max_retries} retries: {self.last_error} "
+                f"(consecutive failures: {self.consecutive_failures})"
+            )
+
+        # Mark as unhealthy after 5 consecutive failures
+        if self.consecutive_failures >= 5:
+            self.is_healthy = False
+
+        return False
 
     async def set_color(self, r: float, g: float, b: float) -> None:
         payload = {
@@ -354,6 +416,22 @@ class ProxyDriver(LEDDriver):
 
     async def set_off(self) -> None:
         await self.set_color(0.0, 0.0, 0.0)
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get health status of proxy connection (v1.5.0).
+
+        Returns:
+            Dict with health metrics for debugging
+        """
+        return {
+            "is_healthy": self.is_healthy,
+            "consecutive_failures": self.consecutive_failures,
+            "total_requests": self.total_requests,
+            "total_failures": self.total_failures,
+            "success_rate": f"{100 * (1 - self.total_failures / max(1, self.total_requests)):.1f}%",
+            "last_error": self.last_error,
+        }
 
 
 def create_driver(name: str, config: Dict[str, Any], server: Any) -> Optional[LEDDriver]:

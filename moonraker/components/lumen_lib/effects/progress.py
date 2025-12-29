@@ -49,7 +49,12 @@ class ProgressEffect(BaseEffect):
             return [state.start_color] * led_count, True
 
         # Get progress from state data (0.0-1.0)
-        progress = state_data.get('print_progress', 0.0)
+        progress = state_data.get('print_progress', None)
+
+        # v1.5.0: Safety - Handle None progress (sensor failures, no print active)
+        if progress is None:
+            return [state.start_color] * led_count, True
+
         progress = max(0.0, min(1.0, progress))  # Clamp to valid range
 
         # Use shared fill logic from thermal effect

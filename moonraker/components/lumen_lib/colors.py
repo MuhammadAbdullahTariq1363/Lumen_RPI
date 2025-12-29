@@ -101,9 +101,27 @@ COLORS: Dict[str, RGB] = {
 }
 
 
-def get_color(name: str) -> RGB:
-    """Look up color by name (case-insensitive)."""
-    return COLORS.get(name.lower(), (0.0, 0.0, 0.0))
+def get_color(name: str, default: RGB | None = None) -> RGB:
+    """Look up color by name (case-insensitive).
+
+    Args:
+        name: Color name to look up
+        default: Default color to return if not found. If None, raises ValueError.
+
+    Returns:
+        RGB tuple for the color
+
+    Raises:
+        ValueError: If color not found and default is None
+
+    v1.5.0: Added error handling instead of silent fallback to black.
+    """
+    color = COLORS.get(name.lower())
+    if color is None:
+        if default is None:
+            raise ValueError(f"Unknown color '{name}'. Use /server/lumen/colors for list.")
+        return default
+    return color
 
 
 def list_colors() -> List[str]:

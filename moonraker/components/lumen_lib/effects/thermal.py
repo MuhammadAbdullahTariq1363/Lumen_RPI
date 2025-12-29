@@ -130,9 +130,13 @@ class ThermalEffect(BaseEffect):
 
         # Get temperature from state data
         temp_source = getattr(state, 'temp_source', 'extruder')
-        current_temp = state_data.get(f'{temp_source}_temp', 0.0)
-        target_temp = state_data.get(f'{temp_source}_target', 0.0)
+        current_temp = state_data.get(f'{temp_source}_temp', None)
+        target_temp = state_data.get(f'{temp_source}_target', None)
         temp_floor = state_data.get('temp_floor', 25.0)
+
+        # v1.5.0: Safety - Handle None temperatures (sensor failures, startup)
+        if current_temp is None or target_temp is None:
+            return [state.start_color] * led_count, True
 
         # If no target set, show solid start_color (waiting for heater)
         if target_temp <= 0:

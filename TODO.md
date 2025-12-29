@@ -149,10 +149,68 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🔧 v1.5.0 - Quality of Life
+## 🔧 v1.5.0 - Stability & Error Handling (December 2025)
+
+### Critical Bug Fixes
+- [ ] **ProxyDriver error recovery** - Add retry logic with exponential backoff
+  - Add timeout=1.0 to urllib requests
+  - Retry 3 times on network failures
+  - Expose proxy health status in /server/lumen/status API
+  - Stop retrying after N consecutive failures to prevent log spam
+- [ ] **Thermal/Progress effect None checks** - Prevent crashes on sensor failures
+  - Check if current_temp/target_temp is None before calculations
+  - Check if progress is None before gradient calculations
+  - Return safe fallback colors instead of crashing
+- [ ] **Config validation hardening** - Reject invalid configs entirely
+  - Validate brightness values (0.0-1.0) in _load_config()
+  - Validate min_sparkle ≤ max_sparkle for disco effect
+  - Validate all effect/state names exist before loading
+  - Raise clear errors instead of silent fallbacks
+- [ ] **Color parsing error visibility** - Show errors in console, not just logs
+  - Return None on parse failures instead of defaulting to white
+  - Check for None in caller and add to warnings list
+  - Display parse errors in /server/lumen/status API
+  - Reject config reload if color parsing fails
+
+### Driver Optimizations
+- [ ] **Klipper driver selective updates** - Prevent G-code queue overload
+  - Only update GPIO/Proxy drivers at full FPS (60 Hz)
+  - Update Klipper drivers at slow rate defined in [lumen_settings]
+  - Keep GPIO strips running at gpio_fps during prints
+  - Prevents mixed-driver setups from being limited by Klipper queue
+  - Note: This is already partially implemented via update_rate settings, but needs separation per driver type in animation loop
+
+### Unit Testing
+- [ ] **Config parsing tests** - Validate all config combinations
+  - Test valid configs parse correctly
+  - Test invalid values are rejected
+  - Test inline effect parameters
+  - Test color parsing edge cases
+- [ ] **State detection tests** - Mock PrinterState, verify events
+  - Test priority ordering (error > heating > printing > idle)
+  - Test macro state transitions
+  - Test timeout behaviors (bored, sleep)
+  - Test filament sensor integration
+- [ ] **Effect calculation tests** - Verify each effect's output
+  - Test solid returns single color
+  - Test pulse brightness oscillation
+  - Test thermal gradient edge cases (None temps, zero range)
+  - Test progress gradient with 0%, 50%, 100%
+  - Test disco random selection within bounds
+- [ ] **Driver tests** - Mock driver responses
+  - Test ProxyDriver retry logic
+  - Test KlipperDriver batch commands
+  - Test GPIODriver thread safety
+  - Test PWMDriver brightness scaling
 
 ### Configuration Enhancements
-- [ ] **Group Min/Max brightness** - Allow group based min/max brightness
+- [ ] **Group Min/Max brightness** - Allow group-based min/max brightness override
+- [ ] **Effect presets library** - Ship ready-to-use config presets
+  - presets/subtle.cfg - Calm pulse effects, low brightness
+  - presets/gaming.cfg - Rainbow, disco, high brightness
+  - presets/professional.cfg - Solid colors only
+  - presets/voron.cfg - Voron-specific multi-zone setup
+
 ### API Improvements
 - [ ] **GET /server/lumen/effects** - List all available effects and parameters
 - [ ] **POST /server/lumen/set_group** - Temporarily override group effect via API
@@ -160,13 +218,66 @@ Active development tasks and future enhancements for LUMEN.
 - [ ] **Macro integration** - LUMEN_SET_RELOAD reload lumen after a .cfg change
 
 ### Debugging Tools
-- [ ] **Effect/state testing mode** - Test effects/states using simple macros. Macro to start testing, macros to change to next state or back a state, macros to change to next effect or back an effect. A macro to restart lumen to go back to normal Those 6 macros should make testing easier. 
-- [ ] **FPS counter** - Report actual achieved frame rate
-- [ ] **Performance profiling** - Identify slow effects or bottlenecks
+- [ ] **Effect/state testing mode** - Test effects/states using simple macros
+  - LUMEN_TEST_START - Enter test mode
+  - LUMEN_TEST_NEXT_STATE - Cycle to next state
+  - LUMEN_TEST_PREV_STATE - Cycle to previous state
+  - LUMEN_TEST_NEXT_EFFECT - Cycle to next effect
+  - LUMEN_TEST_PREV_EFFECT - Cycle to previous effect
+  - LUMEN_TEST_STOP - Exit test mode, reload config
+- [ ] **FPS counter** - Report actual achieved frame rate in status API
+- [ ] **Performance profiling** - Built-in profiling mode
+  - Add profiling_enabled: true to [lumen_settings]
+  - Log FPS, CPU %, max frame time every 60 seconds
+  - Helps diagnose performance issues without external tools
+
+### Documentation
+- [ ] **Color reference with visuals** - GitHub page showing all 50+ colors
+  - Consider adding GIFs of each effect in action
+  - Visual reference makes choosing colors/effects easier
+- [ ] **Web-based configuration UI** - Visual config editor (research phase)
+  - Visit http://printer.local:7125/lumen/config
+  - Visual color picker
+  - Effect preview animations (canvas-based)
+  - Live testing (trigger states manually)
+  - Research implementation approach and scope
 
 ---
 
-## 🎮 v1.6.0 - Fun Features
+## 🎯 v1.6.0 - Macro Detection Overhaul (Q1 2026)
+
+### Critical Macro Tracking Improvements
+- [ ] **Dedicated LUMEN macros for state tracking** - Reliable start/end detection
+  - Create LUMEN wrapper macros (similar to Aurora's approach)
+  - LUMEN_HOMING_START / LUMEN_HOMING_END
+  - LUMEN_MESHING_START / LUMEN_MESHING_END
+  - LUMEN_LEVELING_START / LUMEN_LEVELING_END
+  - LUMEN_PROBING_START / LUMEN_PROBING_END
+  - LUMEN_PAUSED_START / LUMEN_PAUSED_END
+  - LUMEN_CANCELLED / LUMEN_FILAMENT_CHANGE
+  - Users call these from their existing macros (G28, BED_MESH_CALIBRATE, etc.)
+  - Provides explicit state control vs. fragile gcode_response parsing
+
+- [ ] **Hybrid detection system** - Combine macros + gcode_response
+  - Prefer LUMEN macro signals when available (explicit, reliable)
+  - Fall back to gcode_response parsing if macros not called
+  - Best of both worlds: works out-of-box, better with macros
+
+- [ ] **Improved completion detection** - Handle edge cases
+  - Detect explicit cancellation ("!! Cancelled" in gcode_response)
+  - Track multiple simultaneous macros (rare but possible)
+  - Individual timeout tracking per macro type (dict of timestamps)
+  - Expose active_macro_state in /server/lumen/status for debugging
+
+- [ ] **Silent macro handling** - Deal with G28 and other quiet macros
+  - Research Klipper's silent macro behavior
+  - Test detection reliability on G28, G29, etc.
+  - Document which macros require LUMEN wrapper macros
+  - Provide example macro implementations in docs
+
+---
+
+## 🎮 v1.7.0 - Fun Features (Q2 2026)
 
 ### PONG Mode
 - [ ] **LED Pong game** - Printer plays during long prints!
@@ -209,13 +320,16 @@ Active development tasks and future enhancements for LUMEN.
 
 ## 📅 Release Cycle
 
-- **Patch releases (v1.0.x)**: Bug fixes only, no new features
+- **Patch releases (v1.x.y)**: Bug fixes only, no new features
 - **Minor releases (v1.x.0)**: New features, backward compatible
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.4.0 (December 2025)
-**In development:** v1.5.0 (Quality of Life)
-**Next planned release:** v1.5.0 (Quality of Life) - Q1 2026
+**Current stable:** v1.4.1 (December 2025)
+**In development:** v1.5.0 (Stability & Error Handling)
+**Next planned releases:**
+- v1.5.0 (Stability & Error Handling) - Q1 2026
+- v1.6.0 (Macro Detection Overhaul) - Q1 2026
+- v1.7.0 (Fun Features / PONG Mode) - Q2 2026
 
 ---
 
@@ -234,16 +348,26 @@ See existing code for patterns (async/await, type hints, docstrings).
 
 Random ideas not yet prioritized:
 
+- **Conditional effects** - Complex state-based effect logic
+  - Example: `on_printing: if progress < 0.5 then pulse ice else pulse lava`
+  - Example: `on_heating: if bed_temp < 60 then thermal bed ice lava else solid lava`
+  - Could add interesting dynamic behavior but increases config complexity
+- **Effect transitions/crossfade** - Smooth color transitions when switching states
+  - Add `transition_time: 0.5` to [lumen_settings]
+  - Interpolate between old and new colors over N frames
+  - Professional polish, reduces jarring changes
 - Adaptive brightness based on time of day
 - Sunrise/sunset effect (gradual warm color fade)
 - Integration with Home Assistant (publish state via MQTT)
 - LED strip health monitoring (detect dead LEDs, report via API)
-- Custom user effects via Python plugins
+- Custom user effects via Python plugins (effect marketplace)
 - Multi-zone thermal gradients (bed left/right, extruder zones)
 - Print time remaining estimation (via progress effect labels)
+- Hardware PWM support for Pi 5 (rpi_hardware_pwm library, 120+ FPS)
 
 ---
 
-**Last Updated:** December 25, 2025
+**Last Updated:** December 28, 2025
 **Current Version:** v1.4.1 (stable)
+**Next Release:** v1.5.0 - Stability & Error Handling (focusing on testing, validation, and hardening before new features)
 **Status:** v1.4.1 Stable - Production tested on Voron Trident | Fixed critical macro tracking bugs (infinite loop console spam, Klipper driver timeout spam during macros), added 30-second macro timeout, selective driver updates during macro states

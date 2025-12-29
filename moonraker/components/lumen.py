@@ -96,6 +96,8 @@ class Lumen:
         # Animation loop
         self._animation_task: Optional[asyncio.Task] = None
         self._animation_running = False
+        # v1.5.0: Per-group last update time for selective driver updates
+        self._last_group_update: Dict[str, float] = {}
         
         # Thermal logging throttle (v1.0.0 - performance optimization)
         self._last_thermal_log: Dict[str, Tuple[float, float, float]] = {}  # group_name -> (time, current_temp, target_temp)
@@ -202,12 +204,18 @@ class Lumen:
         _logger.info(f"[LUMEN] {msg}")
     
     def _log_warning(self, msg: str) -> None:
-        """Log warning message (always)."""
+        """Log warning message (always). v1.5.0: Also send to console if debug enabled."""
         _logger.warning(f"[LUMEN] {msg}")
+        if self.debug_console:
+            # Send warning to Mainsail console
+            asyncio.create_task(self._send_console_msg(f"WARNING: {msg}"))
     
     def _log_error(self, msg: str) -> None:
-        """Log error message (always)."""
+        """Log error message (always). v1.5.0: Also send to console if debug enabled."""
         _logger.error(f"[LUMEN] {msg}")
+        if self.debug_console:
+            # Send error to Mainsail console
+            asyncio.create_task(self._send_console_msg(f"ERROR: {msg}"))
     
     # ─────────────────────────────────────────────────────────────
     # Config Loading
@@ -263,7 +271,10 @@ class Lumen:
             self._log_error(f"Config error: {e}")
     
     def _validate_config(self) -> None:
-        """Validate configuration and collect warnings."""
+        """Validate configuration and collect warnings.
+
+        v1.5.0: More strict validation - reject invalid effect/event names entirely.
+        """
         available_colors = list_colors()
         valid_effects = set(EFFECT_REGISTRY.keys())
         # v1.2.0 - Added macro-triggered states
@@ -278,7 +289,8 @@ class Lumen:
         # Check event mappings
         for event_name, mappings in self.event_mappings.items():
             if event_name not in valid_events:
-                self.config_warnings.append(f"Unknown event '{event_name}' (valid: {', '.join(valid_events)})")
+                # v1.5.0: Reject invalid event names (was warning before)
+                raise ValueError(f"Unknown event '{event_name}' in config. Valid events: {', '.join(sorted(valid_events))}")
 
             for mapping in mappings:
                 effect = mapping.get("effect", "")
@@ -298,8 +310,9 @@ class Lumen:
                 else:
                     # Validate effect name for addressable LED groups
                     if effect not in valid_effects:
-                        self.config_warnings.append(
-                            f"Group '{group}' on_{event_name}: unknown effect '{effect}' (valid: {', '.join(valid_effects)})"
+                        # v1.5.0: Reject invalid effect names (was warning before)
+                        raise ValueError(
+                            f"Group '{group}' on_{event_name}: unknown effect '{effect}'. Valid effects: {', '.join(sorted(valid_effects))}"
                         )
 
                     # Warn if using addressable-only effects with PWM driver
@@ -340,13 +353,33 @@ class Lumen:
             section_name = parts[1] if len(parts) > 1 else None
             
             if section_type == "lumen_settings":
+                # v1.5.0: Validate numeric values with proper bounds checking
                 self.temp_floor = float(data.get("temp_floor", self.temp_floor))
                 self.bored_timeout = float(data.get("bored_timeout", self.bored_timeout))
                 self.sleep_timeout = float(data.get("sleep_timeout", self.sleep_timeout))
-                self.max_brightness = float(data.get("max_brightness", self.max_brightness))
-                self.update_rate = float(data.get("update_rate", self.update_rate))
-                self.update_rate_printing = float(data.get("update_rate_printing", self.update_rate_printing))
-                self.gpio_fps = int(data.get("gpio_fps", self.gpio_fps))
+
+                # Validate brightness (0.0-1.0)
+                max_brightness = float(data.get("max_brightness", self.max_brightness))
+                if not 0.0 <= max_brightness <= 1.0:
+                    raise ValueError(f"max_brightness must be 0.0-1.0, got {max_brightness}")
+                self.max_brightness = max_brightness
+
+                # Validate update rates (> 0)
+                update_rate = float(data.get("update_rate", self.update_rate))
+                if update_rate <= 0:
+                    raise ValueError(f"update_rate must be > 0, got {update_rate}")
+                self.update_rate = update_rate
+
+                update_rate_printing = float(data.get("update_rate_printing", self.update_rate_printing))
+                if update_rate_printing <= 0:
+                    raise ValueError(f"update_rate_printing must be > 0, got {update_rate_printing}")
+                self.update_rate_printing = update_rate_printing
+
+                # Validate GPIO FPS (1-120 reasonable range)
+                gpio_fps = int(data.get("gpio_fps", self.gpio_fps))
+                if not 1 <= gpio_fps <= 120:
+                    raise ValueError(f"gpio_fps must be 1-120, got {gpio_fps}")
+                self.gpio_fps = gpio_fps
                 # Bed dimensions for KITT tracking
                 self.bed_x_min = float(data.get("bed_x_min", self.bed_x_min))
                 self.bed_x_max = float(data.get("bed_x_max", self.bed_x_max))
@@ -362,7 +395,9 @@ class Lumen:
                 self.macro_filament = self._parse_macro_list(data.get("macro_filament", ""))
             
             elif section_type == "lumen_effect" and section_name:
-                self.effect_settings[section_name] = data.copy()
+                # v1.5.0: Validate effect parameters before storing
+                validated_data = self._validate_effect_params(section_name, data)
+                self.effect_settings[section_name] = validated_data
             
             elif section_type == "lumen_group" and section_name:
                 self.led_groups[section_name] = {
@@ -392,6 +427,67 @@ class Lumen:
         except Exception as e:
             loc = f" (line {line_num})" if line_num else ""
             self._log_error(f"Error in section [{section}]{loc}: {e}")
+
+    def _validate_effect_params(self, effect_name: str, data: Dict[str, str]) -> Dict[str, str]:
+        """Validate effect parameters and return validated copy.
+
+        v1.5.0: Validate numeric ranges for brightness, speed, sparkle, etc.
+        Raises ValueError if validation fails.
+        """
+        validated = data.copy()
+
+        # Validate brightness parameters (0.0-1.0)
+        for key in ['min_brightness', 'max_brightness']:
+            if key in validated:
+                value = float(validated[key])
+                if not 0.0 <= value <= 1.0:
+                    raise ValueError(f"[lumen_effect {effect_name}] {key} must be 0.0-1.0, got {value}")
+
+        # Validate speed (> 0)
+        if 'speed' in validated:
+            value = float(validated['speed'])
+            if value <= 0:
+                raise ValueError(f"[lumen_effect {effect_name}] speed must be > 0, got {value}")
+
+        # Validate sparkle parameters (integers, min <= max)
+        if 'min_sparkle' in validated or 'max_sparkle' in validated:
+            min_sparkle = int(validated.get('min_sparkle', 1))
+            max_sparkle = int(validated.get('max_sparkle', 6))
+
+            if min_sparkle < 0:
+                raise ValueError(f"[lumen_effect {effect_name}] min_sparkle must be >= 0, got {min_sparkle}")
+            if max_sparkle < 1:
+                raise ValueError(f"[lumen_effect {effect_name}] max_sparkle must be >= 1, got {max_sparkle}")
+            if min_sparkle > max_sparkle:
+                raise ValueError(f"[lumen_effect {effect_name}] min_sparkle ({min_sparkle}) must be <= max_sparkle ({max_sparkle})")
+
+        # Validate gradient_curve (> 0)
+        if 'gradient_curve' in validated:
+            value = float(validated['gradient_curve'])
+            if value <= 0:
+                raise ValueError(f"[lumen_effect {effect_name}] gradient_curve must be > 0, got {value}")
+
+        # Validate cooling/fade rates (0.0-1.0)
+        for key in ['fire_cooling', 'comet_fade_rate']:
+            if key in validated:
+                value = float(validated[key])
+                if not 0.0 <= value <= 1.0:
+                    raise ValueError(f"[lumen_effect {effect_name}] {key} must be 0.0-1.0, got {value}")
+
+        # Validate positive integers
+        for key in ['comet_tail_length', 'chase_size', 'kitt_eye_size', 'kitt_tail_length']:
+            if key in validated:
+                value = int(validated[key])
+                if value < 1:
+                    raise ValueError(f"[lumen_effect {effect_name}] {key} must be >= 1, got {value}")
+
+        # Validate rainbow_spread (0.0-1.0)
+        if 'rainbow_spread' in validated:
+            value = float(validated['rainbow_spread'])
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"[lumen_effect {effect_name}] rainbow_spread must be 0.0-1.0, got {value}")
+
+        return validated
 
     def _parse_macro_list(self, value: str) -> List[str]:
         """Parse comma-separated macro list and return uppercase list."""
@@ -709,10 +805,16 @@ class Lumen:
         """
         effect = mapping["effect"]
         color_name = mapping.get("color")
-        
-        # Get base color
+
+        # Get base color (v1.5.0: Validate color names, add warning on failure)
         if color_name:
-            base_r, base_g, base_b = get_color(color_name)
+            try:
+                base_r, base_g, base_b = get_color(color_name)
+            except ValueError as e:
+                self._log_warning(f"Group '{group_name}': {e}. Using white as fallback.")
+                if str(e) not in [w for w in self.config_warnings]:
+                    self.config_warnings.append(str(e))
+                base_r, base_g, base_b = (1.0, 1.0, 1.0)
         else:
             base_r, base_g, base_b = (1.0, 1.0, 1.0)
         
@@ -744,11 +846,19 @@ class Lumen:
         comet_tail_length = int(params.get("comet_tail_length", 10))
         comet_fade_rate = float(params.get("comet_fade_rate", 0.5))
 
-        # Chase params
+        # Chase params (v1.5.0: Validate chase colors)
         chase_color_1_name = params.get("chase_color_1", "red")
         chase_color_2_name = params.get("chase_color_2", "blue")
-        chase_color_1 = get_color(chase_color_1_name)
-        chase_color_2 = get_color(chase_color_2_name)
+        try:
+            chase_color_1 = get_color(chase_color_1_name)
+        except ValueError as e:
+            self._log_warning(f"Group '{group_name}': Invalid chase_color_1 - {e}. Using red.")
+            chase_color_1 = (1.0, 0.0, 0.0)
+        try:
+            chase_color_2 = get_color(chase_color_2_name)
+        except ValueError as e:
+            self._log_warning(f"Group '{group_name}': Invalid chase_color_2 - {e}. Using blue.")
+            chase_color_2 = (0.0, 0.0, 1.0)
         chase_size = int(params.get("chase_size", 5))
         chase_offset_base = float(params.get("chase_offset_base", 0.5))
         chase_offset_variation = float(params.get("chase_offset_variation", 0.1))
@@ -764,15 +874,24 @@ class Lumen:
         kitt_tail_length = int(params.get("kitt_tail_length", 8))
         kitt_tracking_axis = params.get("kitt_tracking_axis", "none").lower()
         
-        # Get actual RGB for start/end colors
-        start_color = get_color(start_color_name)
-        end_color = get_color(end_color_name)
+        # Get actual RGB for start/end colors (v1.5.0: Validate gradient colors)
+        try:
+            start_color = get_color(start_color_name)
+        except ValueError as e:
+            self._log_warning(f"Group '{group_name}': Invalid start_color - {e}. Using steel.")
+            start_color = (0.5, 0.5, 0.6)
+        try:
+            end_color = get_color(end_color_name)
+        except ValueError as e:
+            self._log_warning(f"Group '{group_name}': Invalid end_color - {e}. Using matrix.")
+            end_color = (0.0, 1.0, 0.3)
+
         # Apply brightness cap
-        start_color = (start_color[0] * self.max_brightness, 
-                       start_color[1] * self.max_brightness, 
+        start_color = (start_color[0] * self.max_brightness,
+                       start_color[1] * self.max_brightness,
                        start_color[2] * self.max_brightness)
-        end_color = (end_color[0] * self.max_brightness, 
-                     end_color[1] * self.max_brightness, 
+        end_color = (end_color[0] * self.max_brightness,
+                     end_color[1] * self.max_brightness,
                      end_color[2] * self.max_brightness)
         
         # Apply immediate effects FIRST (before updating state)
@@ -917,11 +1036,7 @@ class Lumen:
 
                 coordinated.add(group_name)
 
-                self._log_debug(
-                    f"Chase {chase_num} ({group_name}): {led_count} LEDs, "
-                    f"direction={direction}, electrical={index_start}→{index_end}, "
-                    f"ring_pos={len(circular_led_map)-led_count}→{len(circular_led_map)-1}"
-                )
+                # v1.5.0: Removed verbose chase debug log (spammed console at 60 FPS)
 
         if not circular_led_map:
             return coordinated
@@ -947,16 +1062,7 @@ class Lumen:
             master_state, now, total_leds, state_data
         )
 
-        # Debug logging for chase coordination
-        if hasattr(chase_effect, '_predator_pos'):
-            self._log_debug(
-                f"Multi-chase: total_leds={total_leds}, "
-                f"predator_pos={chase_effect._predator_pos:.1f}, "
-                f"prey_pos={chase_effect._prey_pos:.1f}, "
-                f"predator_vel={chase_effect._predator_vel:.1f}, "
-                f"prey_vel={chase_effect._prey_vel:.1f}, "
-                f"speed={master_state.speed}"
-            )
+        # v1.5.0: Removed verbose multi-chase debug log (spammed console at 60 FPS)
 
         if not needs_update:
             return coordinated
@@ -1002,7 +1108,7 @@ class Lumen:
             try:
                 if hasattr(driver, 'set_leds'):
                     await driver.set_leds(electrical_colors)
-                    self._log_debug(f"Sent {len(electrical_colors)} colors to {group_name} (direction={direction})")
+                    # v1.5.0: Removed verbose color send debug log (spammed console at 60 FPS)
             except Exception as e:
                 self._log_error(f"Multi-chase error in {group_name}: {e}")
 
@@ -1069,8 +1175,8 @@ class Lumen:
                     'bed_y_max': self.bed_y_max,
                 }
 
-                # Collect intervals from all active animated groups
-                intervals = []
+                # v1.5.0: Track next update times for selective driver updates
+                next_update_times = []
 
                 # Detect multi-group chase coordination
                 chase_groups = self._detect_chase_groups()
@@ -1078,11 +1184,15 @@ class Lumen:
                 if chase_groups:
                     coordinated_groups = await self._render_multi_group_chase(chase_groups, now, is_printing)
 
-                    # Add intervals for coordinated chase groups (v1.4.0: use cached intervals)
+                    # Add next update times for coordinated chase groups
                     for group_name in coordinated_groups:
                         if group_name in self._driver_intervals:
                             printing_interval, idle_interval = self._driver_intervals[group_name]
-                            intervals.append(printing_interval if is_printing else idle_interval)
+                            group_interval = printing_interval if is_printing else idle_interval
+                            last_update = self._last_group_update.get(group_name, 0.0)
+                            next_update = last_update + group_interval
+                            next_update_times.append(next_update)
+                            self._last_group_update[group_name] = now
 
                 for group_name, state in self.effect_states.items():
                     # Skip groups that are part of multi-group chase coordination
@@ -1102,11 +1212,24 @@ class Lumen:
                     if self._active_macro_state and isinstance(driver, KlipperDriver):
                         continue
 
-                    # v1.4.0: Use cached driver interval (avoids isinstance() check in hot path)
+                    # v1.5.0: Selective driver updates - check if interval elapsed
                     if group_name in self._driver_intervals:
                         printing_interval, idle_interval = self._driver_intervals[group_name]
-                        driver_interval = printing_interval if is_printing else idle_interval
-                        intervals.append(driver_interval)
+                        group_interval = printing_interval if is_printing else idle_interval
+
+                        # Check if enough time has passed since last update
+                        last_update = self._last_group_update.get(group_name, 0.0)
+                        time_since_update = now - last_update
+
+                        if time_since_update < group_interval:
+                            # Not time to update this group yet
+                            next_update = last_update + group_interval
+                            next_update_times.append(next_update)
+                            continue
+
+                        # Time to update - track next update time
+                        next_update = now + group_interval
+                        next_update_times.append(next_update)
                     else:
                         continue  # Skip if interval not cached (shouldn't happen)
 
@@ -1165,18 +1288,27 @@ class Lumen:
                             if hasattr(driver, 'set_leds'):
                                 await driver.set_leds(colors)
 
+                        # v1.5.0: Mark this group as updated
+                        self._last_group_update[group_name] = now
+
                     except Exception as e:
                         self._log_error(f"Animation error in {group_name}: {e}")
 
-                # Use the smallest interval (highest update rate needed)
-                # This ensures fast drivers get their updates while slow drivers still work
-                interval = min(intervals) if intervals else self.update_rate
-                # Clamp to minimum 1ms (1000Hz max) to prevent busy-looping
-                interval = max(interval, 0.001)
+                # v1.5.0: Sleep until next group needs updating (selective driver updates)
+                # Use the earliest next update time to determine sleep interval
+                if next_update_times:
+                    next_update = min(next_update_times)
+                    interval = max(next_update - now, 0.001)  # Clamp to 1ms minimum
+                else:
+                    # No groups active, use default interval
+                    interval = self.update_rate
+
+                # Clamp to maximum 1s to ensure responsive shutdown
+                interval = min(interval, 1.0)
 
                 # Debug: Log intervals during printing
-                if is_printing and intervals:
-                    self._log_debug(f"Animation intervals: {intervals}, using min={interval:.4f}s ({1.0/interval:.1f} FPS)")
+                if is_printing and next_update_times:
+                    self._log_debug(f"Next updates in: {[f'{(t-now):.3f}s' for t in sorted(next_update_times)[:3]]}, sleeping {interval:.4f}s")
 
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
@@ -1187,6 +1319,13 @@ class Lumen:
     # ─────────────────────────────────────────────────────────────
     
     async def _handle_status(self, web_request: WebRequest) -> Dict[str, Any]:
+        # v1.5.0: Add ProxyDriver health status
+        from .lumen_lib.drivers import ProxyDriver
+        driver_health = {}
+        for group_name, driver in self.drivers.items():
+            if isinstance(driver, ProxyDriver):
+                driver_health[group_name] = driver.get_health_status()
+
         return {
             "version": __version__,
             "klippy_ready": self.klippy_ready,
@@ -1222,6 +1361,8 @@ class Lumen:
             },
             "led_groups": list(self.led_groups.keys()),
             "warnings": self.config_warnings,
+            # v1.5.0: ProxyDriver health status
+            "driver_health": driver_health if driver_health else None,
         }
     
     async def _handle_colors(self, web_request: WebRequest) -> Dict[str, Any]:
