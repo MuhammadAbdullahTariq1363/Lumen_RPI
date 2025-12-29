@@ -66,7 +66,14 @@ class PrintingDetector(BaseStateDetector):
         bed_temp = heater_bed.get('temperature', 0)
         bed_target = heater_bed.get('target', 0)
 
-        # If we have targets set and we're close to temp, ready to print
+        # v1.5.0: Only check temps if we're actually heating something
+        # If no heaters have targets, we can't be "at temp" - still in startup
+        has_temp_target = (ext_target > 0) or (bed_target > 0)
+        if not has_temp_target:
+            # No temp targets set during print - still in PRINT_START initialization
+            return False
+
+        # Check if all heaters with targets are at temperature
         temps_ready = True
         if ext_target > 0:
             temps_ready = temps_ready and abs(ext_temp - ext_target) <= self.TEMP_TOLERANCE

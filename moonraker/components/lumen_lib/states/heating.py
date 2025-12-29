@@ -51,13 +51,9 @@ class HeatingDetector(BaseStateDetector):
         flickering during PRINT_START sequences that might clear/reset targets.
         """
 
-        # v1.5.0: If print has started, let printing state take over (higher priority)
-        print_stats = status.get('print_stats', {})
-        ps_state = print_stats.get('state', '').lower()
-        if ps_state in ['printing', 'paused']:
-            # Print is active, heating state should yield to printing state
-            self._last_heating_time = None  # Reset hysteresis
-            return False
+        # v1.5.0: Don't manually check print_stats here - let priority system handle it
+        # Printing detector (priority=10) will naturally override heating (priority=20)
+        # when it returns True. We just need to detect if heating is active.
 
         # Check extruder
         extruder = status.get('extruder', {})
