@@ -583,10 +583,12 @@ class Lumen:
 
     def _cache_driver_intervals(self) -> None:
         """Cache driver update intervals to avoid isinstance() checks in animation loop (v1.4.0 optimization)."""
-        from .lumen_lib.drivers import GPIODriver, ProxyDriver
+        # v1.5.0: Use top-level imports (GPIODriver, ProxyDriver already imported at module level)
+        # Don't do local import here - causes module identity issues
 
         for group_name, driver in self.drivers.items():
             driver_type = type(driver).__name__
+
             if isinstance(driver, (GPIODriver, ProxyDriver)):
                 # GPIO/Proxy drivers use FPS-based interval (60 Hz = 0.0167s)
                 interval = 1.0 / self.gpio_fps
@@ -1351,8 +1353,7 @@ class Lumen:
     # ─────────────────────────────────────────────────────────────
     
     async def _handle_status(self, web_request: WebRequest) -> Dict[str, Any]:
-        # v1.5.0: Add ProxyDriver health status
-        from .lumen_lib.drivers import ProxyDriver
+        # v1.5.0: Add ProxyDriver health status (ProxyDriver imported at module level)
         driver_health = {}
         for group_name, driver in self.drivers.items():
             if isinstance(driver, ProxyDriver):
