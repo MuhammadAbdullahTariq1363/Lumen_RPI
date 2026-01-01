@@ -113,6 +113,7 @@ class Lumen:
         self._perf_max_frame_time = 0.0  # Worst case frame time (ms)
         self._perf_console_sends = 0  # Total console sends since startup
         self._perf_console_send_times: List[float] = []  # Last 60 console send timestamps (1 minute window)
+        self._perf_animation_start_time: Optional[float] = None  # Animation loop start time
 
         # Load config and create drivers
         self._load_config()
@@ -1169,6 +1170,10 @@ class Lumen:
     async def _animation_loop(self) -> None:
         """Background loop for animated effects."""
         try:
+            # v1.5.0: Track animation start time for performance metrics
+            if self._perf_animation_start_time is None:
+                self._perf_animation_start_time = time.time()
+
             while self._animation_running:
                 now = time.time()
                 is_printing = self.printer_state.print_state == "printing"
@@ -1391,7 +1396,7 @@ class Lumen:
     def _get_http_requests_per_second(self) -> float:
         """Calculate total HTTP request rate from all ProxyDrivers.
 
-        Returns requests per second averaged since startup.
+        Returns requests per second averaged since animation loop started.
         v1.5.0: Performance monitoring for network overhead.
         """
         total_requests = 0
@@ -1399,11 +1404,11 @@ class Lumen:
             if isinstance(driver, ProxyDriver):
                 total_requests += driver.total_requests
 
-        # Estimate uptime from first frame time
-        if not self._frame_times:
+        # Calculate uptime from animation start time (not rolling frame window!)
+        if self._perf_animation_start_time is None:
             return 0.0
 
-        uptime = time.time() - self._frame_times[0]
+        uptime = time.time() - self._perf_animation_start_time
         if uptime <= 0:
             return 0.0
 
