@@ -377,11 +377,16 @@ class Lumen:
                 self.bored_timeout = float(data.get("bored_timeout", self.bored_timeout))
                 self.sleep_timeout = float(data.get("sleep_timeout", self.sleep_timeout))
 
-                # Validate brightness (0.0-1.0)
-                max_brightness = float(data.get("max_brightness", self.max_brightness))
-                if not 0.0 <= max_brightness <= 1.0:
-                    raise ValueError(f"max_brightness must be 0.0-1.0, got {max_brightness}")
-                self.max_brightness = max_brightness
+                # v1.5.0: max_brightness is deprecated - use group_brightness per group instead
+                if "max_brightness" in data:
+                    max_brightness = float(data.get("max_brightness", self.max_brightness))
+                    if not 0.0 <= max_brightness <= 1.0:
+                        raise ValueError(f"max_brightness must be 0.0-1.0, got {max_brightness}")
+                    self.max_brightness = max_brightness
+                    self.config_warnings.append(
+                        "DEPRECATED: max_brightness in [lumen_settings] is no longer used. "
+                        "Use group_brightness in each [lumen_group] instead for per-group control."
+                    )
 
                 # Validate update rates (> 0)
                 update_rate = float(data.get("update_rate", self.update_rate))
@@ -419,6 +424,11 @@ class Lumen:
                 self.effect_settings[section_name] = validated_data
             
             elif section_type == "lumen_group" and section_name:
+                # v1.5.0: Validate group_brightness (0.0-1.0)
+                group_brightness = float(data.get("group_brightness", 1.0))
+                if not 0.0 <= group_brightness <= 1.0:
+                    raise ValueError(f"[lumen_group {section_name}] group_brightness must be 0.0-1.0, got {group_brightness}")
+
                 self.led_groups[section_name] = {
                     "driver": data.get("driver", "klipper"),
                     "neopixel": data.get("neopixel"),
@@ -431,6 +441,7 @@ class Lumen:
                     "pin_name": data.get("pin_name"),
                     "scale": float(data.get("scale", 10.0)),
                     "direction": data.get("direction", "standard").strip().lower(),
+                    "group_brightness": group_brightness,
                 }
                 
                 # Extract event mappings (on_idle, on_heating, etc.)
@@ -841,10 +852,11 @@ class Lumen:
                 base_r, base_g, base_b = (1.0, 1.0, 1.0)
         else:
             base_r, base_g, base_b = (1.0, 1.0, 1.0)
-        
-        r = base_r * self.max_brightness
-        g = base_g * self.max_brightness
-        b = base_b * self.max_brightness
+
+        # v1.5.0: Removed global brightness application - now using per-group brightness
+        r = base_r
+        g = base_g
+        b = base_b
         
         # Get effect params from [lumen_effect] section (defaults)
         params = self.effect_settings.get(effect, {})
@@ -910,13 +922,8 @@ class Lumen:
             self._log_warning(f"Group '{group_name}': Invalid end_color - {e}. Using matrix.")
             end_color = (0.0, 1.0, 0.3)
 
-        # Apply brightness cap
-        start_color = (start_color[0] * self.max_brightness,
-                       start_color[1] * self.max_brightness,
-                       start_color[2] * self.max_brightness)
-        end_color = (end_color[0] * self.max_brightness,
-                     end_color[1] * self.max_brightness,
-                     end_color[2] * self.max_brightness)
+        # v1.5.0: Removed global brightness - now using per-group brightness in animation loop
+        # start_color and end_color used as-is, group brightness applied later
         
         # Apply immediate effects FIRST (before updating state)
         # This ensures the driver shows the correct state immediately
@@ -1310,6 +1317,16 @@ class Lumen:
                         # Update last_update time for effects that use it
                         if state.effect in ("disco",):
                             state.last_update = now
+
+                        # v1.5.0: Apply per-group brightness multiplier
+                        group_config = self.led_groups.get(group_name, {})
+                        group_brightness = group_config.get("group_brightness", 1.0)
+                        if group_brightness != 1.0:
+                            # Apply brightness to all colors in the list
+                            colors = [
+                                None if color is None else (color[0] * group_brightness, color[1] * group_brightness, color[2] * group_brightness)
+                                for color in colors
+                            ]
 
                         # v1.5.0: Apply colors - batch ProxyDrivers, send others immediately
                         if isinstance(driver, ProxyDriver):

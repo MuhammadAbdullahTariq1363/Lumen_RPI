@@ -61,6 +61,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Added**: Debug logging throttle for thermal effect during printing - disabled to reduce G-code queue usage (lumen.py:1284-1289)
 - **Impact**: Eliminated 12 RESPOND commands/minute during printing, reducing Klipper queue pressure
 
+#### Per-Group Brightness Control
+- **Added**: `group_brightness` parameter (0.0-1.0) to each `[lumen_group]` section (lumen.py:422-425, 439)
+- **Removed**: Global `max_brightness` application from base colors (lumen.py:851-854, 920-921)
+- **Added**: Per-group brightness multiplier applied after effect calculation in animation loop (lumen.py:1321-1329)
+- **Flow**: Base Color (1.0) → Effect Brightness (0.0-1.0) → Group Brightness (0.0-1.0) → Final Color
+- **Deprecated**: `max_brightness` in `[lumen_settings]` - now shows warning to use `group_brightness` per group (lumen.py:380-389)
+- **Impact**:
+  - Fixed double-dimming bug where global × effect brightness = much dimmer than expected
+  - Enables fine-grained brightness control per LED group for different power supplies
+  - Klipper-connected groups can use lower brightness for voltage demands
+  - Proxy-connected groups can use full brightness with dedicated power supplies
+- **Updated**: All example configs (ender3_simple.cfg, voron_24.cfg, voron_trident.cfg) with `group_brightness` parameter
+
 ### Changed
 - Version bumped from v1.4.1 to v1.5.0
 
