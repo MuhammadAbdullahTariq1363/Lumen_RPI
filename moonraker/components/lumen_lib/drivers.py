@@ -433,6 +433,57 @@ class ProxyDriver(LEDDriver):
             "last_error": self.last_error,
         }
 
+    @staticmethod
+    async def batch_update(proxy_host: str, proxy_port: int, updates: List[Dict[str, Any]]) -> bool:
+        """
+        Send multiple LED updates in a single HTTP request (v1.5.0).
+
+        Args:
+            proxy_host: Proxy server hostname
+            proxy_port: Proxy server port
+            updates: List of update dictionaries, each containing:
+                - type: 'set_color' or 'set_leds'
+                - gpio_pin: GPIO pin number
+                - index_start/index_end: LED indices
+                - r, g, b: Color values (for set_color)
+                - colors: List of RGB tuples (for set_leds)
+                - color_order: Color order string
+
+        Returns:
+            True if successful, False otherwise
+
+        Example:
+            updates = [
+                {'type': 'set_color', 'gpio_pin': 21, 'index_start': 1, 'index_end': 50,
+                 'r': 1.0, 'g': 0.0, 'b': 0.0, 'color_order': 'GRB'},
+                {'type': 'set_leds', 'gpio_pin': 21, 'index_start': 51,
+                 'colors': [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)], 'color_order': 'GRB'},
+            ]
+            await ProxyDriver.batch_update('127.0.0.1', 3769, updates)
+        """
+        url = f"http://{proxy_host}:{proxy_port}/batch_update"
+        payload = {"updates": updates}
+        data = json.dumps(payload).encode('utf-8')
+
+        def _send():
+            try:
+                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=1.0) as resp:
+                    if resp.getcode() == 200:
+                        return True, None
+            except Exception as e:
+                return False, str(e)
+            return False, "Unknown error"
+
+        try:
+            success, error = await asyncio.to_thread(_send)
+            if not success:
+                _logger.warning(f"[LUMEN] ProxyDriver batch_update failed: {error}")
+            return success
+        except Exception as e:
+            _logger.warning(f"[LUMEN] ProxyDriver batch_update exception: {e}")
+            return False
+
 
 def create_driver(name: str, config: Dict[str, Any], server: Any) -> Optional[LEDDriver]:
     """Factory function to create the appropriate driver."""

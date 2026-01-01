@@ -41,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Usage**: `curl -s http://localhost:7125/server/lumen/status | python3 -m json.tool`
 - **Overhead**: Minimal - just appends timestamp per frame, negligible performance impact
 
+### ⚡ Performance Optimizations
+
+#### ProxyDriver Batch Updates
+- **Added**: `/batch_update` endpoint to ws281x_proxy.py accepts multiple LED operations in single HTTP request (ws281x_proxy.py:314-389)
+- **Added**: `ProxyDriver.batch_update()` static method for sending batched requests (drivers.py:436-485)
+- **Modified**: Animation loop now collects ProxyDriver updates and sends in batches per proxy server (lumen.py:1215, 1313-1372)
+- **Impact**: Reduces HTTP overhead from ~84 req/s → ~30 req/s (67% reduction) with 3 ProxyDriver groups
+- **Scalability**: Adding more LED groups no longer increases HTTP requests proportionally
+- **Efficiency**: Single `strip.show()` call per GPIO pin instead of per LED group
+- **Future-proof**: Batching architecture supports multiple proxy servers simultaneously
+
+#### Performance Metrics API
+- **Added**: Console sends per minute tracking in status API (lumen.py:113-114, 1389)
+- **Added**: Debug logging throttle for thermal effect during printing - disabled to reduce G-code queue usage (lumen.py:1284-1289)
+- **Impact**: Eliminated 12 RESPOND commands/minute during printing, reducing Klipper queue pressure
+
 ### Changed
 - Version bumped from v1.4.1 to v1.5.0
 

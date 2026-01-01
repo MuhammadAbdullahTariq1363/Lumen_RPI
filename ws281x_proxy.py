@@ -10,9 +10,10 @@ Usage:
   sudo python3 ws281x_proxy.py --port 3769
 
 Endpoints:
-  POST /set_color  - payload: {gpio_pin, index_start, index_end, r, g, b, color_order}
-  POST /set_leds   - payload: {gpio_pin, index_start, colors: [[r,g,b], ...], color_order}
-  GET  /status     - returns active strips
+  POST /set_color    - payload: {gpio_pin, index_start, index_end, r, g, b, color_order}
+  POST /set_leds     - payload: {gpio_pin, index_start, colors: [[r,g,b], ...], color_order}
+  POST /batch_update - payload: {updates: [{type, gpio_pin, ...}, ...]} (v1.5.0)
+  GET  /status       - returns active strips
 """
 
 import argparse
@@ -310,6 +311,83 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             # (end of set_leds)
+
+            # v1.5.0: /batch_update endpoint - process multiple LED updates in one request
+            if self.path == '/batch_update':
+                updates: List = data.get('updates', [])
+                if not updates:
+                    self._send_json(400, {'error': 'no updates provided'})
+                    return
+
+                results = []
+                for idx, update in enumerate(updates):
+                    try:
+                        update_type = update.get('type', 'set_color')
+                        gpio_pin = int(update.get('gpio_pin', 18))
+
+                        # Parse color_order if provided
+                        color_order = update.get('color_order', 'GRB').upper().strip()
+                        strip_type = STRIP_TYPES.get(color_order, DEFAULT_STRIP_TYPE)
+
+                        if update_type == 'set_color':
+                            start = int(update.get('index_start', 1))
+                            end = int(update.get('index_end', start))
+                            r = float(update.get('r', 1.0))
+                            g = float(update.get('g', 1.0))
+                            b = float(update.get('b', 1.0))
+
+                            strip = _get_strip(gpio_pin, end, strip_type)
+                            if not strip:
+                                results.append({'index': idx, 'error': 'strip init failed'})
+                                continue
+
+                            c = Color(int(r * 255), int(g * 255), int(b * 255))
+                            for i in range(start - 1, end):
+                                strip.setPixelColor(i, c)
+                            # Don't call strip.show() yet - batch at end
+                            results.append({'index': idx, 'result': 'ok'})
+
+                        elif update_type == 'set_leds':
+                            start = int(update.get('index_start', 1))
+                            colors: List = update.get('colors', [])
+                            end_needed = start - 1 + len(colors)
+
+                            strip = _get_strip(gpio_pin, end_needed, strip_type)
+                            if not strip:
+                                results.append({'index': idx, 'error': 'strip init failed'})
+                                continue
+
+                            for i, color in enumerate(colors):
+                                led_index = start - 1 + i
+                                if led_index >= _strip_sizes[gpio_pin]:
+                                    break
+                                if color is None:
+                                    strip.setPixelColor(led_index, Color(0, 0, 0))
+                                else:
+                                    r, g, b = color
+                                    strip.setPixelColor(led_index, Color(int(r * 255), int(g * 255), int(b * 255)))
+                            # Don't call strip.show() yet - batch at end
+                            results.append({'index': idx, 'result': 'ok'})
+
+                        else:
+                            results.append({'index': idx, 'error': f'unknown type: {update_type}'})
+
+                    except Exception as e:
+                        results.append({'index': idx, 'error': str(e)})
+
+                # Call strip.show() once for all affected pins
+                affected_pins = set()
+                for update in updates:
+                    if 'gpio_pin' in update:
+                        affected_pins.add(int(update.get('gpio_pin', 18)))
+
+                for pin in affected_pins:
+                    if pin in _strips:
+                        _strips[pin].show()
+
+                _logger.info(f"Batch update: {len(updates)} updates across {len(affected_pins)} pins")
+                self._send_json(200, {'results': results, 'updates_processed': len(updates)})
+                return
 
             # /init_strip endpoint: allows pre-initialization for diagnostics
             if self.path == '/init_strip':

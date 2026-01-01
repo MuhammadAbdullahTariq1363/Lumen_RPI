@@ -1210,6 +1210,10 @@ class Lumen:
                 # v1.5.0: Track next update times for selective driver updates
                 next_update_times = []
 
+                # v1.5.0: Collect ProxyDriver updates for batching
+                # Key: (proxy_host, proxy_port), Value: list of update dicts
+                proxy_batches: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+
                 # Detect multi-group chase coordination
                 chase_groups = self._detect_chase_groups()
                 coordinated_groups = set()
@@ -1306,25 +1310,66 @@ class Lumen:
                         if state.effect in ("disco",):
                             state.last_update = now
 
-                        # Apply colors to driver
-                        if len(colors) == 1:
-                            # Single color effect (pulse, heartbeat, solid, off)
-                            color = colors[0]
-                            if color is None:
-                                await driver.set_off()
+                        # v1.5.0: Apply colors - batch ProxyDrivers, send others immediately
+                        if isinstance(driver, ProxyDriver):
+                            # Collect for batching
+                            batch_key = (driver.proxy_host, driver.proxy_port)
+                            if batch_key not in proxy_batches:
+                                proxy_batches[batch_key] = []
+
+                            if len(colors) == 1:
+                                # Single color update
+                                color = colors[0]
+                                if color is None:
+                                    r, g, b = 0.0, 0.0, 0.0
+                                else:
+                                    r, g, b = color
+
+                                proxy_batches[batch_key].append({
+                                    'type': 'set_color',
+                                    'gpio_pin': driver.gpio_pin,
+                                    'index_start': driver.index_start,
+                                    'index_end': driver.index_end,
+                                    'r': r,
+                                    'g': g,
+                                    'b': b,
+                                    'color_order': driver.color_order,
+                                })
                             else:
-                                r, g, b = color
-                                await driver.set_color(r, g, b)
+                                # Multi-LED update
+                                proxy_batches[batch_key].append({
+                                    'type': 'set_leds',
+                                    'gpio_pin': driver.gpio_pin,
+                                    'index_start': driver.index_start,
+                                    'colors': colors,
+                                    'color_order': driver.color_order,
+                                })
                         else:
-                            # Multi-LED effect (disco, thermal, progress)
-                            if hasattr(driver, 'set_leds'):
-                                await driver.set_leds(colors)
+                            # Non-proxy drivers - send immediately (Klipper, GPIO, PWM)
+                            if len(colors) == 1:
+                                color = colors[0]
+                                if color is None:
+                                    await driver.set_off()
+                                else:
+                                    r, g, b = color
+                                    await driver.set_color(r, g, b)
+                            else:
+                                if hasattr(driver, 'set_leds'):
+                                    await driver.set_leds(colors)
 
                         # v1.5.0: Mark this group as updated
                         self._last_group_update[group_name] = now
 
                     except Exception as e:
                         self._log_error(f"Animation error in {group_name}: {e}")
+
+                # v1.5.0: Send all batched ProxyDriver updates
+                for (proxy_host, proxy_port), updates in proxy_batches.items():
+                    if updates:
+                        try:
+                            await ProxyDriver.batch_update(proxy_host, proxy_port, updates)
+                        except Exception as e:
+                            self._log_error(f"Batch update failed for {proxy_host}:{proxy_port}: {e}")
 
                 # v1.5.0: Sleep until next group needs updating (selective driver updates)
                 # Use the earliest next update time to determine sleep interval

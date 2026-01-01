@@ -5,10 +5,10 @@
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.4.1-blue)]()
+[![Version](https://img.shields.io/badge/version-v1.5.0-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.4.1 Release** - Fixed critical macro tracking bugs (infinite loop spam, Klipper driver timeout spam)
+> **v1.5.0 Release** - Critical bug fixes (GPIO FPS bottleneck, state flip-flopping) + ProxyDriver batching optimization (67% HTTP overhead reduction)
 
 ---
 
@@ -28,22 +28,24 @@ Smart LED effects that respond to your printer's state in real-time. No macros, 
 
 ---
 
-## What's New in v1.4.0
-
-### Performance Optimizations
-- **60 FPS driver interval caching** - Eliminated 240-300 `isinstance()` checks per second
-- **State data pre-building** - 93% reduction in dictionary operations per animation cycle
-- **Loop attribute caching** - Cached repeated lookups in chase, kitt, and fire effects
-- **Disco random selection** - Optimized from O(n log n) to O(k) algorithm
-- **HSV utility extraction** - Eliminated ~90 lines of duplicated color conversion code
+## What's New in v1.5.0
 
 ### Critical Bug Fixes
-- **Disco effect crash fix** - Added bounds validation to prevent `ValueError` when `min_sparkle > max_sparkle`
-- **Thermal effect safety** - Added division by zero protection for edge cases
+- **GPIO FPS Bottleneck** - Fixed module identity mismatch causing GPIO/Proxy drivers to use 5s intervals instead of 60 FPS during printing
+- **State Detection Flip-Flopping** - Fixed heating/printing state transitions with MIN_PRINT_TEMP threshold (200°C) and improved heating logic
+- **Log Spam** - Removed "Next updates in" debug message that fired every frame
 
-### Code Cleanup
-- Removed unused imports, dead telemetry code, and unused PWMDriver methods
-- Added error logging to silent exception handlers for better debugging
+### Performance Optimizations
+- **ProxyDriver Batch Updates** - Reduces HTTP overhead from ~84 req/s → ~30 req/s (67% reduction) with 3 groups
+  - Single HTTP request per animation frame instead of one per LED group
+  - Scales efficiently when adding more LED groups
+  - Single `strip.show()` call per GPIO pin for better efficiency
+- **Performance Metrics API** - Real-time FPS counter, console sends tracking, and performance monitoring
+- **Thermal Debug Throttling** - Disabled thermal logging during printing to reduce G-code queue pressure
+
+### New Features
+- **Real-time FPS Counter** - Lightweight 30-frame rolling average displayed in `/server/lumen/status` API
+- **Enhanced Status API** - Added `animation.fps`, `performance.console_sends_per_minute`, and `gpio_fps` fields
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
