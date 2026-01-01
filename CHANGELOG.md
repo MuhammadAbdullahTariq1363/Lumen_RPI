@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Performance Metrics API
 - **Added**: Console sends per minute tracking in status API (lumen.py:113-114, 1389)
+- **Added**: CPU and memory usage metrics in status API (lumen.py:1463-1528, 1521-1522)
+  - `cpu_percent`: Average Moonraker CPU usage since process started
+  - `memory_mb`: Moonraker RSS memory usage in megabytes
+  - Uses /proc filesystem for lightweight, accurate measurements
 - **Added**: Debug logging throttle for thermal effect during printing - disabled to reduce G-code queue usage (lumen.py:1284-1289)
 - **Impact**: Eliminated 12 RESPOND commands/minute during printing, reducing Klipper queue pressure
 

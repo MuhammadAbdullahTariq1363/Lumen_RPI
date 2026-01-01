@@ -14,6 +14,7 @@ __version__ = "1.5.0"
 
 import asyncio
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -1459,6 +1460,73 @@ class Lumen:
 
         return total_requests / uptime
 
+    def _get_cpu_percent(self) -> float:
+        """Get Moonraker process CPU usage percentage (approximate).
+
+        Uses /proc/self/stat to calculate average CPU usage since process started.
+        Returns 0.0 if measurement fails.
+
+        v1.5.0: Performance monitoring for resource usage.
+        """
+        try:
+            # Read process stats from /proc/self/stat
+            with open('/proc/self/stat', 'r') as f:
+                stats = f.read().split()
+
+            # Extract CPU time fields (utime + stime)
+            # Field 14 = utime (user mode), Field 15 = stime (kernel mode)
+            # Values are in clock ticks
+            utime = int(stats[13])  # 0-indexed: field 14 is index 13
+            stime = int(stats[14])  # 0-indexed: field 15 is index 14
+            total_time = utime + stime
+
+            # Get system clock ticks per second
+            clock_ticks = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+
+            # Calculate elapsed wall time since process started
+            # Field 22 = starttime (in clock ticks since boot)
+            starttime = int(stats[21])
+
+            # Get system uptime
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.read().split()[0])
+
+            # Calculate process uptime
+            process_uptime = uptime_seconds - (starttime / clock_ticks)
+
+            if process_uptime <= 0:
+                return 0.0
+
+            # CPU% = (total_cpu_time / process_uptime) * 100
+            # This gives average CPU usage since process started
+            cpu_percent = (total_time / clock_ticks / process_uptime) * 100.0
+
+            return min(cpu_percent, 100.0)  # Cap at 100%
+
+        except (FileNotFoundError, ValueError, IndexError, KeyError):
+            # Fallback: return 0.0 if /proc not available or parsing fails
+            return 0.0
+
+    def _get_memory_mb(self) -> float:
+        """Get Moonraker process memory usage in MB (RSS - Resident Set Size).
+
+        Returns memory in megabytes. Returns 0.0 if measurement fails.
+
+        v1.5.0: Performance monitoring for resource usage.
+        """
+        try:
+            # Read process status from /proc/self/status
+            with open('/proc/self/status', 'r') as f:
+                for line in f:
+                    if line.startswith('VmRSS:'):
+                        # VmRSS is in kB, convert to MB
+                        mem_kb = int(line.split()[1])
+                        return mem_kb / 1024.0
+            return 0.0
+        except (FileNotFoundError, ValueError, IndexError):
+            # Fallback: return 0.0 if /proc not available
+            return 0.0
+
     # ─────────────────────────────────────────────────────────────
     # API Endpoints
     # ─────────────────────────────────────────────────────────────
@@ -1516,6 +1584,9 @@ class Lumen:
                 "http_requests_per_second": round(self._get_http_requests_per_second(), 2),
                 "console_sends_per_minute": round(self._get_console_sends_per_minute(), 1),
                 "total_console_sends": self._perf_console_sends,
+                # v1.5.0: Process resource usage
+                "cpu_percent": round(self._get_cpu_percent(), 1),
+                "memory_mb": round(self._get_memory_mb(), 1),
             },
         }
     
