@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-01-01
+
+### 🐛 Critical Bug Fixes
+
+#### GPIO Driver FPS Bottleneck (Bug #1)
+- **Root cause**: Module identity mismatch caused `isinstance()` checks to fail, forcing GPIO/Proxy drivers to use slow Klipper intervals (5s during printing instead of 0.0167s at 60 FPS)
+- **Fix**: Removed local imports in `_cache_driver_intervals()` and `_handle_status()` that created duplicate class objects (lumen.py:586-587, 1356)
+- **Fix**: Added missing `GPIODriver, ProxyDriver` to top-level imports (lumen.py:30)
+- **Fix**: Call `_cache_driver_intervals()` after config reload to rebuild interval cache (lumen.py:1411)
+- **Impact**: GPIO strips now update at true 60 FPS (0.0167s intervals), achieving 31+ actual FPS in animation loop
+- **Diagnostic**: Added driver interval logging showing "GPIO/Proxy interval=0.0167s (FPS=60)" vs "Klipper/PWM printing=5.0s, idle=0.1s"
+
+#### State Detection Flip-Flopping (Bug #2)
+- **Root cause**: Multiple logic errors in heating/printing state detectors caused incorrect transitions
+- **Fix**: Added `MIN_PRINT_TEMP = 200.0°C` threshold to distinguish PRINT_START prep (cartographer touch at 150°C) from actual printing (printing.py:28-29, 81-83)
+- **Fix**: Changed heating detector to stay active when ANY heater has target > 0, removing temperature proximity checks (heating.py:35-103)
+- **Fix**: Removed manual `print_stats` check from heating detector that caused both detectors to return False → idle (heating.py removed lines checking print_stats)
+- **Fix**: Added `has_temp_target` check to prevent false "temps ready" during bed-only preheat (printing.py:73-76)
+- **Impact**: Smooth state transitions during full print cycle: heating (bed preheat) → heating (extruder 150°C) → heating (probing/meshing) → heating (final heatup) → printing (when extruder >200°C and at target) → cooldown → idle
+
+#### Log Spam
+- **Fix**: Removed "Next updates in" debug log that fired every animation frame during printing (lumen.py:1321)
+- **Impact**: Eliminated console spam, cleaner journalctl logs
+
+### ✨ New Features
+
+#### Real-time FPS Counter
+- **Added**: Lightweight FPS tracking using 30-frame rolling average (lumen.py:109-110, 1162-1164)
+- **Added**: `_get_current_fps()` helper method calculates actual animation loop performance (lumen.py:1331-1347)
+- **Added**: FPS displayed in `/server/lumen/status` API endpoint under `animation.fps` (lumen.py:1393)
+- **Added**: `gpio_fps` config value to status endpoint (lumen.py:1388)
+- **Usage**: `curl -s http://localhost:7125/server/lumen/status | python3 -m json.tool`
+- **Overhead**: Minimal - just appends timestamp per frame, negligible performance impact
+
+### Changed
+- Version bumped from v1.4.1 to v1.5.0
+
+---
+
 ## [1.4.1] - 2025-12-25
 
 ### 🐛 Critical Bug Fixes - Macro Tracking
@@ -282,6 +321,7 @@ This is the first stable release. Pre-release development history available in c
 - 📝 Documentation
 - 🔧 Maintenance
 
+[1.5.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.5.0
 [1.4.1]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.1
 [1.4.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.0
 [1.3.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.3.0

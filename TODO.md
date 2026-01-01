@@ -149,13 +149,37 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🔧 v1.5.0 - Stability & Error Handling (December 2025)
+## ✅ v1.5.0 - Critical Bug Fixes (January 2026)
 
-### Critical Bug Fixes
+### Critical Bug Fixes - COMPLETED ✅
+- [x] **GPIO Driver FPS Bottleneck** - Fixed module identity mismatch causing 5s update intervals instead of 60 FPS
+  - Removed local imports that created duplicate class objects
+  - Added missing GPIODriver, ProxyDriver to top-level imports
+  - Added _cache_driver_intervals() call after config reload
+  - GPIO strips now update at true 0.0167s intervals (60 FPS target)
+  - Achieving 31+ actual FPS in animation loop
+- [x] **State Detection Flip-Flopping** - Fixed heating/printing state transitions
+  - Added MIN_PRINT_TEMP = 200°C threshold to distinguish PRINT_START prep from actual printing
+  - Fixed heating detector to stay active when ANY heater has target > 0
+  - Removed manual print_stats check causing detector conflicts
+  - Added has_temp_target check to prevent false "temps ready" during bed-only preheat
+  - Smooth state flow: heating → printing → cooldown → idle
+- [x] **Log Spam** - Removed "Next updates in" debug log firing every animation frame
+- [x] **FPS Counter** - Real-time FPS tracking in /server/lumen/status API
+  - Lightweight 30-frame rolling average
+  - Shows actual animation loop performance
+  - Minimal overhead
+
+### Remaining v1.5.0 Tasks
+- [ ] **Brightness control investigation** - Verify brightness levels are noticeable across states/effects
+- [ ] **Performance impact analysis** - Analyze if LUMEN is slowing Klipper down
+  - Review console logging frequency
+  - Check for repeated calls while Klipper is blocked
+  - Measure actual CPU/memory impact during prints
 - [ ] **ProxyDriver error recovery** - Add retry logic with exponential backoff
   - Add timeout=1.0 to urllib requests
   - Retry 3 times on network failures
-  - Expose proxy health status in /server/lumen/status API
+  - Expose proxy health status in /server/lumen/status API (PARTIALLY DONE - health status exists)
   - Stop retrying after N consecutive failures to prevent log spam
 - [ ] **Thermal/Progress effect None checks** - Prevent crashes on sensor failures
   - Check if current_temp/target_temp is None before calculations
@@ -171,37 +195,6 @@ Active development tasks and future enhancements for LUMEN.
   - Check for None in caller and add to warnings list
   - Display parse errors in /server/lumen/status API
   - Reject config reload if color parsing fails
-
-### Driver Optimizations
-- [ ] **Klipper driver selective updates** - Prevent G-code queue overload
-  - Only update GPIO/Proxy drivers at full FPS (60 Hz)
-  - Update Klipper drivers at slow rate defined in [lumen_settings]
-  - Keep GPIO strips running at gpio_fps during prints
-  - Prevents mixed-driver setups from being limited by Klipper queue
-  - Note: This is already partially implemented via update_rate settings, but needs separation per driver type in animation loop
-
-### Unit Testing
-- [ ] **Config parsing tests** - Validate all config combinations
-  - Test valid configs parse correctly
-  - Test invalid values are rejected
-  - Test inline effect parameters
-  - Test color parsing edge cases
-- [ ] **State detection tests** - Mock PrinterState, verify events
-  - Test priority ordering (error > heating > printing > idle)
-  - Test macro state transitions
-  - Test timeout behaviors (bored, sleep)
-  - Test filament sensor integration
-- [ ] **Effect calculation tests** - Verify each effect's output
-  - Test solid returns single color
-  - Test pulse brightness oscillation
-  - Test thermal gradient edge cases (None temps, zero range)
-  - Test progress gradient with 0%, 50%, 100%
-  - Test disco random selection within bounds
-- [ ] **Driver tests** - Mock driver responses
-  - Test ProxyDriver retry logic
-  - Test KlipperDriver batch commands
-  - Test GPIODriver thread safety
-  - Test PWMDriver brightness scaling
 
 ### Configuration Enhancements
 - [ ] **Group Min/Max brightness** - Allow group-based min/max brightness override
@@ -225,22 +218,20 @@ Active development tasks and future enhancements for LUMEN.
   - LUMEN_TEST_NEXT_EFFECT - Cycle to next effect
   - LUMEN_TEST_PREV_EFFECT - Cycle to previous effect
   - LUMEN_TEST_STOP - Exit test mode, reload config
-- [ ] **FPS counter** - Report actual achieved frame rate in status API
 - [ ] **Performance profiling** - Built-in profiling mode
   - Add profiling_enabled: true to [lumen_settings]
   - Log FPS, CPU %, max frame time every 60 seconds
   - Helps diagnose performance issues without external tools
 
+### Unit Testing
+- [ ] **Config parsing tests** - Validate all config combinations
+- [ ] **State detection tests** - Mock PrinterState, verify events
+- [ ] **Effect calculation tests** - Verify each effect's output
+- [ ] **Driver tests** - Mock driver responses
+
 ### Documentation
 - [ ] **Color reference with visuals** - GitHub page showing all 50+ colors
-  - Consider adding GIFs of each effect in action
-  - Visual reference makes choosing colors/effects easier
 - [ ] **Web-based configuration UI** - Visual config editor (research phase)
-  - Visit http://printer.local:7125/lumen/config
-  - Visual color picker
-  - Effect preview animations (canvas-based)
-  - Live testing (trigger states manually)
-  - Research implementation approach and scope
 
 ---
 
@@ -367,7 +358,7 @@ Random ideas not yet prioritized:
 
 ---
 
-**Last Updated:** December 28, 2025
-**Current Version:** v1.4.1 (stable)
-**Next Release:** v1.5.0 - Stability & Error Handling (focusing on testing, validation, and hardening before new features)
-**Status:** v1.4.1 Stable - Production tested on Voron Trident | Fixed critical macro tracking bugs (infinite loop console spam, Klipper driver timeout spam during macros), added 30-second macro timeout, selective driver updates during macro states
+**Last Updated:** January 1, 2026
+**Current Version:** v1.5.0 (stable)
+**Next Focus:** Brightness control investigation, performance impact analysis
+**Status:** v1.5.0 Stable - Production tested on Voron Trident | Fixed critical GPIO FPS bottleneck (module identity mismatch), fixed state detection flip-flopping (MIN_PRINT_TEMP threshold, heating detector logic), added real-time FPS counter, eliminated log spam

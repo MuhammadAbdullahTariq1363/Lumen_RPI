@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.4.1"
+__version__ = "1.5.0"
 
 import asyncio
 import logging
@@ -109,6 +109,11 @@ class Lumen:
         self._frame_times: List[float] = []  # Last 30 frame timestamps
         self._max_frame_samples = 30  # Keep last 30 frames for 0.5-2 second average at 15-60 FPS
 
+        # v1.5.0 - Performance metrics tracking
+        self._perf_max_frame_time = 0.0  # Worst case frame time (ms)
+        self._perf_console_sends = 0  # Total console sends since startup
+        self._perf_console_send_times: List[float] = []  # Last 60 console send timestamps (1 minute window)
+
         # Load config and create drivers
         self._load_config()
         self._create_drivers()
@@ -195,6 +200,14 @@ class Lumen:
         if not self.klippy_ready:
             return
         try:
+            # v1.5.0: Track console send rate for performance monitoring
+            now = time.time()
+            self._perf_console_sends += 1
+            self._perf_console_send_times.append(now)
+            # Keep only last 60 timestamps (1 minute window at 1 send/second)
+            if len(self._perf_console_send_times) > 60:
+                self._perf_console_send_times.pop(0)
+
             klippy = self.server.lookup_component("klippy_apis")
             # Escape quotes in message
             safe_msg = msg.replace('"', "'")
@@ -1260,8 +1273,8 @@ class Lumen:
                         # v1.4.0: Use cached state_data instead of rebuilding (performance optimization)
                         state_data = state_data_cache if effect.requires_state_data else None
 
-                        # Throttle thermal debug logging
-                        if state.effect == "thermal" and state_data:
+                        # v1.5.0: Throttle thermal debug logging (disabled during printing to reduce Klipper load)
+                        if state.effect == "thermal" and state_data and not is_printing:
                             current_temp = state_data.get(f'{state.temp_source}_temp', 0.0)
                             target_temp = state_data.get(f'{state.temp_source}_target', 0.0)
 
@@ -1320,7 +1333,11 @@ class Lumen:
                 # Clamp to maximum 1s to ensure responsive shutdown
                 interval = min(interval, 1.0)
 
-                # v1.5.0: Removed debug log spam (was logging every animation frame)
+                # v1.5.0: Track max frame time for performance monitoring
+                frame_end = time.time()
+                frame_time_ms = (frame_end - now) * 1000.0
+                if frame_time_ms > self._perf_max_frame_time:
+                    self._perf_max_frame_time = frame_time_ms
 
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
@@ -1347,6 +1364,50 @@ class Lumen:
             return None
 
         return frame_count / time_span
+
+    def _get_console_sends_per_minute(self) -> float:
+        """Calculate console send rate over last minute.
+
+        Returns console sends per minute based on rolling 60-second window.
+        v1.5.0: Performance monitoring for Klipper G-code queue impact.
+        """
+        if len(self._perf_console_send_times) < 2:
+            return 0.0
+
+        now = time.time()
+        # Filter to last 60 seconds
+        recent = [t for t in self._perf_console_send_times if (now - t) <= 60.0]
+
+        if len(recent) < 2:
+            return 0.0
+
+        time_span = recent[-1] - recent[0]
+        if time_span <= 0:
+            return 0.0
+
+        # sends per second × 60 = sends per minute
+        return (len(recent) - 1) / time_span * 60.0
+
+    def _get_http_requests_per_second(self) -> float:
+        """Calculate total HTTP request rate from all ProxyDrivers.
+
+        Returns requests per second averaged since startup.
+        v1.5.0: Performance monitoring for network overhead.
+        """
+        total_requests = 0
+        for driver in self.drivers.values():
+            if isinstance(driver, ProxyDriver):
+                total_requests += driver.total_requests
+
+        # Estimate uptime from first frame time
+        if not self._frame_times:
+            return 0.0
+
+        uptime = time.time() - self._frame_times[0]
+        if uptime <= 0:
+            return 0.0
+
+        return total_requests / uptime
 
     # ─────────────────────────────────────────────────────────────
     # API Endpoints
@@ -1398,6 +1459,14 @@ class Lumen:
             "warnings": self.config_warnings,
             # v1.5.0: ProxyDriver health status
             "driver_health": driver_health if driver_health else None,
+            # v1.5.0: Performance metrics
+            "performance": {
+                "fps": round(self._get_current_fps(), 2) if self._get_current_fps() is not None else None,
+                "max_frame_time_ms": round(self._perf_max_frame_time, 2),
+                "http_requests_per_second": round(self._get_http_requests_per_second(), 2),
+                "console_sends_per_minute": round(self._get_console_sends_per_minute(), 1),
+                "total_console_sends": self._perf_console_sends,
+            },
         }
     
     async def _handle_colors(self, web_request: WebRequest) -> Dict[str, Any]:
