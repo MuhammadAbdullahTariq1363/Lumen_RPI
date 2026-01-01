@@ -45,7 +45,13 @@ Smart LED effects that respond to your printer's state in real-time. No macros, 
 
 ### New Features
 - **Real-time FPS Counter** - Lightweight 30-frame rolling average displayed in `/server/lumen/status` API
-- **Enhanced Status API** - Added `animation.fps`, `performance.console_sends_per_minute`, and `gpio_fps` fields
+- **Enhanced Status API** - Added comprehensive performance monitoring:
+  - `animation.fps` - Current animation frame rate
+  - `performance.cpu_percent` - Moonraker CPU usage
+  - `performance.memory_mb` - Moonraker memory usage
+  - `performance.console_sends_per_minute` - G-code queue impact tracking
+  - `performance.http_requests_per_second` - Network overhead monitoring
+  - `gpio_fps` - Configured target FPS for GPIO drivers
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
@@ -425,15 +431,38 @@ gradient_curve: 1.5        # Slightly sharper toward 100%
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/server/lumen/status` | GET | Current state, config, LED groups, warnings |
+| `/server/lumen/status` | GET | Current state, config, LED groups, performance metrics, warnings |
 | `/server/lumen/colors` | GET | List all available color names |
 | `/server/lumen/test_event?event=STATE` | POST | Manually trigger a state (heating, printing, etc) |
 | `/server/lumen/reload` | POST | Hot reload lumen.cfg without Moonraker restart |
 
+**Status API Response (v1.5.0):**
+```json
+{
+  "version": "1.5.0",
+  "klippy_ready": true,
+  "detector": { "current_event": "printing", ... },
+  "printer": { "bed_temp": 100.0, "extruder_temp": 260.0, ... },
+  "animation": { "running": true, "fps": 46.87, "effects": {...} },
+  "performance": {
+    "fps": 46.87,
+    "max_frame_time_ms": 43.28,
+    "http_requests_per_second": 0.02,
+    "console_sends_per_minute": 0.0,
+    "cpu_percent": 13.3,
+    "memory_mb": 66.8
+  },
+  "driver_health": { ... }
+}
+```
+
 **Examples:**
 ```bash
-# Check status
+# Check status with performance metrics
 curl http://localhost:7125/server/lumen/status | jq
+
+# Monitor performance during printing
+curl -s http://localhost:7125/server/lumen/status | jq '.result.performance'
 
 # List colors
 curl http://localhost:7125/server/lumen/colors | jq
