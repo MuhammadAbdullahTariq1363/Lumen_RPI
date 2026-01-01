@@ -105,6 +105,10 @@ class Lumen:
         # v1.4.0 - Performance: Cache driver intervals to avoid isinstance() checks in hot path
         self._driver_intervals: Dict[str, Tuple[float, float]] = {}  # group_name -> (printing_interval, idle_interval)
 
+        # v1.5.0 - FPS tracking for status endpoint (lightweight rolling average)
+        self._frame_times: List[float] = []  # Last 30 frame timestamps
+        self._max_frame_samples = 30  # Keep last 30 frames for 0.5-2 second average at 15-60 FPS
+
         # Load config and create drivers
         self._load_config()
         self._create_drivers()
@@ -1154,6 +1158,11 @@ class Lumen:
                 now = time.time()
                 is_printing = self.printer_state.print_state == "printing"
 
+                # v1.5.0: Track frame time for FPS calculation (lightweight - no overhead)
+                self._frame_times.append(now)
+                if len(self._frame_times) > self._max_frame_samples:
+                    self._frame_times.pop(0)  # Keep only last N frames
+
                 # v1.4.0: Build state_data once per cycle (optimization - was rebuilt for each effect)
                 state_data_cache = {
                     # Temps for thermal effect
@@ -1316,6 +1325,28 @@ class Lumen:
             self._log_debug("Animation loop cancelled")
     
     # ─────────────────────────────────────────────────────────────
+    # Helper Methods
+    # ─────────────────────────────────────────────────────────────
+
+    def _get_current_fps(self) -> Optional[float]:
+        """Calculate current animation FPS from recent frame times.
+
+        Returns None if insufficient data, otherwise FPS as float.
+        v1.5.0: Lightweight FPS tracking for diagnostics.
+        """
+        if len(self._frame_times) < 2:
+            return None
+
+        # Calculate average frame time from sample window
+        time_span = self._frame_times[-1] - self._frame_times[0]
+        frame_count = len(self._frame_times) - 1
+
+        if time_span <= 0:
+            return None
+
+        return frame_count / time_span
+
+    # ─────────────────────────────────────────────────────────────
     # API Endpoints
     # ─────────────────────────────────────────────────────────────
     
@@ -1354,10 +1385,12 @@ class Lumen:
                 "max_brightness": self.max_brightness,
                 "update_rate": self.update_rate,
                 "update_rate_printing": self.update_rate_printing,
+                "gpio_fps": self.gpio_fps,
                 "debug": "console" if self.debug_console else self.debug,
             },
             "animation": {
                 "running": self._animation_running,
+                "fps": round(self._get_current_fps(), 2) if self._get_current_fps() is not None else None,
                 "effects": {n: s.effect for n, s in self.effect_states.items()},
             },
             "led_groups": list(self.led_groups.keys()),
@@ -1400,11 +1433,15 @@ class Lumen:
         # Clear caches to prevent memory leaks
         self.effect_instances.clear()
         self._last_thermal_log.clear()
+        self._driver_intervals.clear()
 
         # Recreate effect states for new drivers
         self.effect_states.clear()
         for name in self.drivers:
             self.effect_states[name] = EffectState()
+
+        # v1.5.0: Rebuild driver interval cache after reload
+        self._cache_driver_intervals()
         
         # Re-apply current event (this also restarts animation loop)
         current_event = self.state_detector.current_event
