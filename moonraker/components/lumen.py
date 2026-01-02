@@ -1248,10 +1248,24 @@ class Lumen:
                 proxy_batches: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
 
                 # Detect multi-group chase coordination
+                # v1.5.0 Fix 6: Skip chase rendering if any group is "off" to prevent LEDs staying on
                 chase_groups = self._detect_chase_groups()
                 coordinated_groups = set()
                 if chase_groups:
-                    coordinated_groups = await self._render_multi_group_chase(chase_groups, now, is_printing)
+                    # Check if any chase group has been switched to "off" effect
+                    has_off_groups = False
+                    for group_names in chase_groups.values():
+                        for group_name in group_names:
+                            state = self.effect_states.get(group_name)
+                            if state and state.effect == "off":
+                                has_off_groups = True
+                                break
+                        if has_off_groups:
+                            break
+
+                    # Only render chase if no groups are off
+                    if not has_off_groups:
+                        coordinated_groups = await self._render_multi_group_chase(chase_groups, now, is_printing)
 
                     # Add next update times for coordinated chase groups
                     for group_name in coordinated_groups:

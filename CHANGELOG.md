@@ -75,15 +75,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Updated**: All example configs (ender3_simple.cfg, voron_24.cfg, voron_trident.cfg) with `group_brightness` parameter
 
 #### Off Effect LED Cleanup Bug
-- **Root cause**: Off effect returned single color `[(0,0,0)]` instead of per-LED colors, causing race conditions during state transitions
+- **Root cause**: Multi-group chase coordination continued rendering even after groups switched to "off" effect, overwriting clear commands
 - **Fix 1**: Changed off effect to return per-LED colors `[(0,0,0)] * led_count` (off.py:34)
 - **Fix 2**: Added explicit per-LED clearing in immediate effect application using `set_leds()` (lumen.py:931-942)
-- **Fix 3**: Skip animation loop rendering for "off" effect to prevent race condition (lumen.py:1257-1259)
+- **Fix 3**: Skip animation loop rendering for "off" effect to prevent race condition (lumen.py:1271-1273)
 - **Fix 4**: Added debug logging to verify LED clearing during state transitions (lumen.py:934, 938, 942)
 - **Fix 5**: Added timing delays and double-send to prevent animation loop race conditions (lumen.py:931-956)
   - Wait 50ms before sending first clear command to let animation loop complete
   - Send second clear command after 50ms delay to ensure it takes effect
   - Prevents race condition where animation loop sends updates after immediate clear
+- **Fix 6**: Skip multi-group chase rendering if any chase group has "off" effect (lumen.py:1251-1268)
+  - Multi-group chase coordination was continuing to render even after state changed to "off"
+  - Now checks all chase groups for "off" effect and skips chase rendering entirely
+  - Prevents chase effect from overwriting off commands during bored→sleep transition
 - **Impact**: Fixed bug where some LEDs stayed on during bored→sleep transition after multi-LED effects (disco, chase, etc.)
 
 ### Changed
