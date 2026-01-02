@@ -928,6 +928,10 @@ class Lumen:
         # Apply immediate effects FIRST (before updating state)
         # This ensures the driver shows the correct state immediately
         if effect == "off":
+            # v1.5.0 Fix 5: Wait for animation loop to complete current frame before clearing
+            # This prevents race condition where animation loop might send updates after our clear command
+            await asyncio.sleep(0.05)  # Wait 50ms for any pending animation updates to complete
+
             # v1.5.0: Additional safety - explicitly clear all LEDs
             # Send per-LED off colors to ensure complete cleanup
             led_count = driver.led_count if hasattr(driver, 'led_count') else 1
@@ -936,10 +940,20 @@ class Lumen:
                 # Use set_leds for multi-LED groups to ensure all LEDs are cleared
                 await driver.set_leds([(0.0, 0.0, 0.0)] * led_count)
                 self._log_debug(f"Group '{group_name}': sent {led_count} black colors via set_leds()")
+
+                # v1.5.0 Fix 5: Send a second clear command after a delay to ensure it takes effect
+                await asyncio.sleep(0.05)  # Wait another 50ms
+                await driver.set_leds([(0.0, 0.0, 0.0)] * led_count)
+                self._log_debug(f"Group '{group_name}': sent second clear command to ensure LEDs are off")
             else:
                 # Fall back to set_off for single LED or drivers without set_leds
                 await driver.set_off()
                 self._log_debug(f"Group '{group_name}': called set_off()")
+
+                # v1.5.0 Fix 5: Send a second clear command
+                await asyncio.sleep(0.05)
+                await driver.set_off()
+                self._log_debug(f"Group '{group_name}': sent second off command to ensure LED is off")
         elif effect == "solid":
             await driver.set_color(r, g, b)
         elif effect in ("pulse", "heartbeat", "disco"):
