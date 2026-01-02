@@ -247,22 +247,28 @@ Active development tasks and future enhancements for LUMEN.
   - Ready-to-use examples for PRINT_START/PRINT_END integration
   - Convenient LED control from G-code macros
 
-### Deferred Features
-- [ ] **WebSocket notifications** - Broadcast state changes to Mainsail/Fluidd
-  - Deferred to v1.7.0 - requires additional architecture design for efficient broadcasting
+## ✅ v1.7.0 - Debugging Tools (January 2026)
 
-### v1.7.0 Tasks Debugging Tools
-- [ ] **Effect/state testing mode** - Test effects/states using simple macros
+### Test Mode - COMPLETED ✅
+- [x] **Effect/state testing mode** - Test effects/states using simple macros
   - LUMEN_TEST_START - Enter test mode
   - LUMEN_TEST_NEXT_STATE - Cycle to next state
   - LUMEN_TEST_PREV_STATE - Cycle to previous state
   - LUMEN_TEST_NEXT_EFFECT - Cycle to next effect
   - LUMEN_TEST_PREV_EFFECT - Cycle to previous effect
   - LUMEN_TEST_STOP - Exit test mode, reload config
-- [ ] **Performance profiling** - Built-in profiling mode
+  - Six new API endpoints for test mode control
+  - Test mode overrides normal state detection
+  - Allows rapid cycling through all 14 states and 12 effects
+  - Perfect for debugging LED configurations without triggering actual printer states
+
+### Performance Profiling - COMPLETED ✅
+- [x] **Performance profiling** - Built-in profiling mode
   - Add profiling_enabled: true to [lumen_settings]
-  - Log FPS, CPU %, max frame time every 60 seconds
+  - Log FPS, CPU %, memory, max frame time, console sends/min, uptime every 60 seconds
+  - Automatic profiling loop that starts/stops with animation loop
   - Helps diagnose performance issues without external tools
+  - Format: `[PROFILING] FPS: 46.9, CPU: 12.5%, Memory: 68.2 MB, Max frame time: 15.32 ms, Console sends/min: 0.0, Uptime: 125.3 min`
 
 ### Unit Testing
 - [ ] **Config parsing tests** - Validate all config combinations
@@ -273,6 +279,17 @@ Active development tasks and future enhancements for LUMEN.
 ### v1.8.0 Tasks Documentation
 - [ ] **Color reference with visuals** - GitHub page showing all 50+ colors
 - [ ] **Web-based configuration UI** - Visual config editor (research phase)
+
+---
+
+## 🔔 v1.9.1 - WebSocket Notifications (Future Discussion)
+
+### Real-time State Broadcasting
+- [ ] **WebSocket notifications** - Broadcast state changes to Mainsail/Fluidd
+  - Deferred from v1.6.5 - requires architectural discussion
+  - Needs design for efficient state change broadcasting
+  - Consider: persistent connections, broadcast management, performance impact
+  - To be discussed: why needed, how to implement, integration with existing UIs
 
 ---
 
@@ -305,7 +322,7 @@ Active development tasks and future enhancements for LUMEN.
   - Document which macros require LUMEN wrapper macros
   - Provide example macro implementations in docs
 
-### v1.9.5 Electrical Requirements
+### v1.9.9 Electrical Requirements
 - [ ] **Document electrical requirements and proper power supply setup**
   - Power supply sizing guidelines for different LED strip lengths
   - Voltage requirements and current calculations
@@ -391,5 +408,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** January 2, 2026
-**Current Version:** v1.6.5 (stable)
-**Status:** v1.6.5 STABLE - Production tested on Voron Trident | API improvements (effects listing, group overrides, macro integration), config validation hardening, ProxyDriver batch retry logic, immediate error feedback on invalid configs
+**Current Version:** v1.7.0 (stable)
+**Status:** v1.7.0 STABLE - Production tested on Voron Trident | Debugging tools (test mode for state/effect cycling, performance profiling), API improvements (effects listing, group overrides, macro integration), config validation hardening

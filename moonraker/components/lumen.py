@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.6.5"
+__version__ = "1.7.0"
 
 import asyncio
 import logging
@@ -116,6 +116,18 @@ class Lumen:
         self._perf_console_send_times: List[float] = []  # Last 60 console send timestamps (1 minute window)
         self._perf_animation_start_time: Optional[float] = None  # Animation loop start time
 
+        # v1.7.0 - Test mode for effect/state debugging
+        self._test_mode_enabled = False
+        self._test_mode_state_index = 0  # Current state being tested
+        self._test_mode_effect_index = 0  # Current effect being tested
+        self._test_mode_group = ""  # Group being tested (for effect cycling)
+        self._test_mode_states = sorted([e.value for e in PrinterEvent])  # All available states
+        self._test_mode_effects = sorted(EFFECT_REGISTRY.keys())  # All available effects
+
+        # v1.7.0 - Performance profiling
+        self.profiling_enabled = False  # Loaded from config
+        self._profiling_task: Optional[asyncio.Task] = None
+
         # Load config and create drivers
         self._load_config()
         self._create_drivers()
@@ -151,6 +163,13 @@ class Lumen:
         # v1.6.5: New API endpoints
         self.server.register_endpoint("/server/lumen/effects", ["GET"], self._handle_effects)
         self.server.register_endpoint("/server/lumen/set_group", ["POST"], self._handle_set_group)
+        # v1.7.0: Test mode endpoints
+        self.server.register_endpoint("/server/lumen/test/start", ["POST"], self._handle_test_start)
+        self.server.register_endpoint("/server/lumen/test/stop", ["POST"], self._handle_test_stop)
+        self.server.register_endpoint("/server/lumen/test/next_state", ["POST"], self._handle_test_next_state)
+        self.server.register_endpoint("/server/lumen/test/prev_state", ["POST"], self._handle_test_prev_state)
+        self.server.register_endpoint("/server/lumen/test/next_effect", ["POST"], self._handle_test_next_effect)
+        self.server.register_endpoint("/server/lumen/test/prev_effect", ["POST"], self._handle_test_prev_effect)
         
         # Log initialization
         self._log_info(f"Initialized with {len(self.led_groups)} groups")
@@ -420,6 +439,9 @@ class Lumen:
                 self.macro_paused = self._parse_macro_list(data.get("macro_paused", ""))
                 self.macro_cancelled = self._parse_macro_list(data.get("macro_cancelled", ""))
                 self.macro_filament = self._parse_macro_list(data.get("macro_filament", ""))
+                # v1.7.0 - Performance profiling
+                profiling_str = data.get("profiling_enabled", "false").lower()
+                self.profiling_enabled = profiling_str in ("true", "1", "yes")
             
             elif section_type == "lumen_effect" and section_name:
                 # v1.5.0: Validate effect parameters before storing
@@ -1313,6 +1335,9 @@ class Lumen:
 
             self._animation_running = True
             self._animation_task = asyncio.create_task(self._animation_loop())
+            # v1.7.0: Start profiling task if enabled
+            if self.profiling_enabled and not self._profiling_task:
+                self._profiling_task = asyncio.create_task(self._profiling_loop())
         elif not has_animated and self._animation_running:
             self._animation_running = False
             if self._animation_task:
@@ -1321,6 +1346,14 @@ class Lumen:
                     await self._animation_task
                 except asyncio.CancelledError:
                     pass
+            # v1.7.0: Stop profiling task
+            if self._profiling_task:
+                self._profiling_task.cancel()
+                try:
+                    await self._profiling_task
+                except asyncio.CancelledError:
+                    pass
+                self._profiling_task = None
     
     async def _animation_loop(self) -> None:
         """Background loop for animated effects."""
@@ -1575,7 +1608,50 @@ class Lumen:
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             self._log_debug("Animation loop cancelled")
-    
+
+    async def _profiling_loop(self) -> None:
+        """
+        Background loop for performance profiling (v1.7.0).
+
+        Logs performance metrics every 60 seconds when profiling_enabled=true.
+        """
+        try:
+            while self.profiling_enabled and self._animation_running:
+                await asyncio.sleep(60.0)  # Log every 60 seconds
+
+                # Gather metrics
+                fps = self._get_current_fps()
+                console_sends_per_min = self._get_console_sends_per_minute()
+                max_frame_time = self._perf_max_frame_time
+
+                # Get uptime
+                uptime_seconds = time.time() - self._perf_animation_start_time if self._perf_animation_start_time else 0
+                uptime_minutes = uptime_seconds / 60.0
+
+                # Get CPU and memory (basic metrics)
+                import psutil
+                process = psutil.Process()
+                cpu_percent = process.cpu_percent(interval=0.1)
+                memory_mb = process.memory_info().rss / (1024 * 1024)
+
+                # Log metrics
+                self._log_info(
+                    f"[PROFILING] FPS: {fps:.1f if fps else 0:.1f}, "
+                    f"CPU: {cpu_percent:.1f}%, "
+                    f"Memory: {memory_mb:.1f} MB, "
+                    f"Max frame time: {max_frame_time:.2f} ms, "
+                    f"Console sends/min: {console_sends_per_min:.1f}, "
+                    f"Uptime: {uptime_minutes:.1f} min"
+                )
+
+                # Reset max frame time after logging
+                self._perf_max_frame_time = 0.0
+
+        except asyncio.CancelledError:
+            self._log_debug("Profiling loop cancelled")
+        except Exception as e:
+            self._log_error(f"Profiling loop error: {e}")
+
     # ─────────────────────────────────────────────────────────────
     # Helper Methods
     # ─────────────────────────────────────────────────────────────
@@ -2065,6 +2141,218 @@ class Lumen:
                 "color": color_name,
                 "message": "Override applied until next state change"
             }
+
+    # ======================
+    # v1.7.0 - Test Mode API Handlers
+    # ======================
+
+    async def _handle_test_start(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        POST /server/lumen/test/start - Enter test mode (v1.7.0).
+
+        Test mode allows cycling through states and effects for debugging.
+        Normal state detection is disabled while in test mode.
+        """
+        self._test_mode_enabled = True
+        self._test_mode_state_index = 0
+        self._test_mode_effect_index = 0
+        # Default to first group for effect testing
+        self._test_mode_group = sorted(self.drivers.keys())[0] if self.drivers else ""
+
+        # Apply first test state
+        if self._test_mode_states:
+            test_state = self._test_mode_states[0]
+            event = PrinterEvent(test_state)
+            await self._apply_event(event)
+
+            self._log_info(f"Test mode enabled - State: {test_state}")
+
+            return {
+                "result": "ok",
+                "test_mode": "enabled",
+                "current_state": test_state,
+                "state_index": 0,
+                "total_states": len(self._test_mode_states),
+                "available_states": self._test_mode_states,
+                "message": "Test mode enabled. Use next_state/prev_state to cycle states."
+            }
+        else:
+            return {
+                "result": "error",
+                "message": "No states available for testing"
+            }
+
+    async def _handle_test_stop(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        POST /server/lumen/test/stop - Exit test mode and reload config (v1.7.0).
+
+        Disables test mode and returns to normal state detection.
+        """
+        self._test_mode_enabled = False
+
+        # Reload config to return to normal operation
+        self._load_config()
+
+        # Apply current detected state
+        current_event = self.state_detector.current_event
+        await self._apply_event(current_event)
+
+        self._log_info("Test mode disabled - returned to normal operation")
+
+        return {
+            "result": "ok",
+            "test_mode": "disabled",
+            "current_state": current_event.value,
+            "message": "Test mode disabled, config reloaded"
+        }
+
+    async def _handle_test_next_state(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        POST /server/lumen/test/next_state - Cycle to next printer state (v1.7.0).
+
+        Only works when test mode is enabled.
+        """
+        if not self._test_mode_enabled:
+            return {
+                "result": "error",
+                "message": "Test mode not enabled. Use /server/lumen/test/start first."
+            }
+
+        # Cycle to next state
+        self._test_mode_state_index = (self._test_mode_state_index + 1) % len(self._test_mode_states)
+        test_state = self._test_mode_states[self._test_mode_state_index]
+        event = PrinterEvent(test_state)
+        await self._apply_event(event)
+
+        self._log_info(f"Test mode - State: {test_state} ({self._test_mode_state_index + 1}/{len(self._test_mode_states)})")
+
+        return {
+            "result": "ok",
+            "current_state": test_state,
+            "state_index": self._test_mode_state_index,
+            "total_states": len(self._test_mode_states),
+            "message": f"Switched to state: {test_state}"
+        }
+
+    async def _handle_test_prev_state(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        POST /server/lumen/test/prev_state - Cycle to previous printer state (v1.7.0).
+
+        Only works when test mode is enabled.
+        """
+        if not self._test_mode_enabled:
+            return {
+                "result": "error",
+                "message": "Test mode not enabled. Use /server/lumen/test/start first."
+            }
+
+        # Cycle to previous state
+        self._test_mode_state_index = (self._test_mode_state_index - 1) % len(self._test_mode_states)
+        test_state = self._test_mode_states[self._test_mode_state_index]
+        event = PrinterEvent(test_state)
+        await self._apply_event(event)
+
+        self._log_info(f"Test mode - State: {test_state} ({self._test_mode_state_index + 1}/{len(self._test_mode_states)})")
+
+        return {
+            "result": "ok",
+            "current_state": test_state,
+            "state_index": self._test_mode_state_index,
+            "total_states": len(self._test_mode_states),
+            "message": f"Switched to state: {test_state}"
+        }
+
+    async def _handle_test_next_effect(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        POST /server/lumen/test/next_effect - Cycle to next effect on test group (v1.7.0).
+
+        Parameters:
+            group: Group name (optional, uses first group if not specified)
+
+        Only works when test mode is enabled.
+        """
+        if not self._test_mode_enabled:
+            return {
+                "result": "error",
+                "message": "Test mode not enabled. Use /server/lumen/test/start first."
+            }
+
+        # Allow changing test group
+        group_name = web_request.get_str("group", self._test_mode_group)
+        if group_name not in self.drivers:
+            return {
+                "result": "error",
+                "message": f"Unknown group '{group_name}'. Available groups: {', '.join(sorted(self.drivers.keys()))}"
+            }
+        self._test_mode_group = group_name
+
+        # Cycle to next effect
+        self._test_mode_effect_index = (self._test_mode_effect_index + 1) % len(self._test_mode_effects)
+        effect_name = self._test_mode_effects[self._test_mode_effect_index]
+
+        # Apply effect to test group
+        driver = self.drivers[group_name]
+        state = self.effect_states.get(group_name, EffectState())
+        state.effect = effect_name
+        self.effect_states[group_name] = state
+        await self._apply_effect(group_name, effect_name, state.base_color, driver)
+
+        self._log_info(f"Test mode - Effect: {effect_name} on {group_name} ({self._test_mode_effect_index + 1}/{len(self._test_mode_effects)})")
+
+        return {
+            "result": "ok",
+            "current_effect": effect_name,
+            "effect_index": self._test_mode_effect_index,
+            "total_effects": len(self._test_mode_effects),
+            "group": group_name,
+            "message": f"Switched to effect: {effect_name} on {group_name}"
+        }
+
+    async def _handle_test_prev_effect(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        POST /server/lumen/test/prev_effect - Cycle to previous effect on test group (v1.7.0).
+
+        Parameters:
+            group: Group name (optional, uses current test group if not specified)
+
+        Only works when test mode is enabled.
+        """
+        if not self._test_mode_enabled:
+            return {
+                "result": "error",
+                "message": "Test mode not enabled. Use /server/lumen/test/start first."
+            }
+
+        # Allow changing test group
+        group_name = web_request.get_str("group", self._test_mode_group)
+        if group_name not in self.drivers:
+            return {
+                "result": "error",
+                "message": f"Unknown group '{group_name}'. Available groups: {', '.join(sorted(self.drivers.keys()))}"
+            }
+        self._test_mode_group = group_name
+
+        # Cycle to previous effect
+        self._test_mode_effect_index = (self._test_mode_effect_index - 1) % len(self._test_mode_effects)
+        effect_name = self._test_mode_effects[self._test_mode_effect_index]
+
+        # Apply effect to test group
+        driver = self.drivers[group_name]
+        state = self.effect_states.get(group_name, EffectState())
+        state.effect = effect_name
+        self.effect_states[group_name] = state
+        await self._apply_effect(group_name, effect_name, state.base_color, driver)
+
+        self._log_info(f"Test mode - Effect: {effect_name} on {group_name} ({self._test_mode_effect_index + 1}/{len(self._test_mode_effects)})")
+
+        return {
+            "result": "ok",
+            "current_effect": effect_name,
+            "effect_index": self._test_mode_effect_index,
+            "total_effects": len(self._test_mode_effects),
+            "group": group_name,
+            "message": f"Switched to effect: {effect_name} on {group_name}"
+        }
 
 
 def load_component(config: ConfigHelper) -> Lumen:

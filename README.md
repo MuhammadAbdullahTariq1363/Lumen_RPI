@@ -5,10 +5,10 @@
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.6.5-blue)]()
+[![Version](https://img.shields.io/badge/version-v1.7.0-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.6.5 Release** - API improvements: Effects listing, group overrides, macro integration
+> **v1.7.0 Release** - Debugging tools: Test mode for state/effect cycling, performance profiling
 
 ---
 
@@ -448,6 +448,12 @@ gradient_curve: 1.5        # Slightly sharper toward 100%
 | `/server/lumen/test_event?event=STATE` | POST | Manually trigger a state (heating, printing, etc) |
 | `/server/lumen/set_group` | POST | Temporarily override group effect (v1.6.5) |
 | `/server/lumen/reload` | POST | Hot reload lumen.cfg without Moonraker restart |
+| `/server/lumen/test/start` | POST | Enter test mode for state/effect debugging (v1.7.0) |
+| `/server/lumen/test/stop` | POST | Exit test mode and reload config (v1.7.0) |
+| `/server/lumen/test/next_state` | POST | Cycle to next printer state in test mode (v1.7.0) |
+| `/server/lumen/test/prev_state` | POST | Cycle to previous printer state in test mode (v1.7.0) |
+| `/server/lumen/test/next_effect?group=GROUP` | POST | Cycle to next effect on specific group (v1.7.0) |
+| `/server/lumen/test/prev_effect?group=GROUP` | POST | Cycle to previous effect on specific group (v1.7.0) |
 
 **Effects API Response (v1.6.5):**
 ```json
@@ -519,6 +525,52 @@ gcode:
     LUMEN_SET GROUP=chamber EFFECT=solid COLOR=white  # Bright white for printing
     # ... rest of code ...
 ```
+
+### Test Mode (v1.7.0)
+
+Test mode allows you to quickly cycle through printer states and effects without actually heating, printing, or triggering specific conditions:
+
+```gcode
+# Enter test mode
+LUMEN_TEST_START
+
+# Cycle through printer states
+LUMEN_TEST_NEXT_STATE         # idle → heating → printing → cooldown → ...
+LUMEN_TEST_PREV_STATE         # ... → cooldown → printing → heating → idle
+
+# Cycle through effects on specific group
+LUMEN_TEST_NEXT_EFFECT GROUP=left    # solid → pulse → heartbeat → disco → ...
+LUMEN_TEST_PREV_EFFECT GROUP=left    # ... → disco → heartbeat → pulse → solid
+
+# Exit test mode
+LUMEN_TEST_STOP
+```
+
+**Benefits:**
+- Rapidly test LED configurations without waiting for printer state changes
+- Cycle through all 14 states and 12 effects
+- Perfect for debugging new configurations
+- No need to heat bed or start prints just to test effects
+
+### Performance Profiling (v1.7.0)
+
+Enable built-in performance monitoring in `lumen.cfg`:
+
+```ini
+[lumen_settings]
+profiling_enabled: true
+```
+
+When enabled, LUMEN logs performance metrics every 60 seconds:
+```
+[PROFILING] FPS: 46.9, CPU: 12.5%, Memory: 68.2 MB, Max frame time: 15.32 ms, Console sends/min: 0.0, Uptime: 125.3 min
+```
+
+**Use cases:**
+- Diagnose performance bottlenecks
+- Monitor resource usage over time
+- Identify FPS drops or frame time spikes
+- Track CPU/memory consumption
 
 ---
 

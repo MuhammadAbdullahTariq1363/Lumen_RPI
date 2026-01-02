@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-01-02
+
+### 🧪 Debugging Tools
+
+#### Test Mode - Interactive State/Effect Cycling
+- **Added**: Test mode for debugging LED configurations without waiting for printer state changes
+- **API Endpoints**:
+  - `POST /server/lumen/test/start` - Enter test mode (lumen.py:2095-2129)
+  - `POST /server/lumen/test/stop` - Exit test mode and reload config (lumen.py:2131-2153)
+  - `POST /server/lumen/test/next_state` - Cycle to next printer state (lumen.py:2155-2181)
+  - `POST /server/lumen/test/prev_state` - Cycle to previous printer state (lumen.py:2183-2209)
+  - `POST /server/lumen/test/next_effect?group=GROUP` - Cycle to next effect on specific group (lumen.py:2211-2255)
+  - `POST /server/lumen/test/prev_effect?group=GROUP` - Cycle to previous effect on specific group (lumen.py:2257-2301)
+- **Macros Added** (examples/lumen_macros.cfg):
+  - `LUMEN_TEST_START` - Enter test mode
+  - `LUMEN_TEST_STOP` - Exit test mode
+  - `LUMEN_TEST_NEXT_STATE` / `LUMEN_TEST_PREV_STATE` - Cycle printer states
+  - `LUMEN_TEST_NEXT_EFFECT GROUP=<name>` / `LUMEN_TEST_PREV_EFFECT GROUP=<name>` - Cycle effects
+- **Behavior**:
+  - Test mode overrides normal state detection
+  - Allows cycling through all 14 printer states (idle, heating, printing, cooldown, error, bored, sleep, homing, meshing, leveling, probing, paused, cancelled, filament)
+  - Allows cycling through all 12 effects (solid, pulse, heartbeat, disco, thermal, progress, rainbow, fire, comet, chase, kitt, off)
+  - Exiting test mode reloads config and returns to normal operation
+- **Usage Example**:
+  ```gcode
+  LUMEN_TEST_START                    # Enter test mode
+  LUMEN_TEST_NEXT_STATE               # Cycle to next state
+  LUMEN_TEST_NEXT_EFFECT GROUP=left   # Cycle to next effect on left group
+  LUMEN_TEST_STOP                     # Exit test mode
+  ```
+- **Impact**: Dramatically faster LED configuration testing - no need to heat bed, start print, or trigger specific states
+
+#### Performance Profiling
+- **Added**: Built-in performance profiling with periodic logging (lumen.py:1601-1642)
+- **Config Setting**: `profiling_enabled: true` in `[lumen_settings]` section
+- **Metrics Logged** (every 60 seconds):
+  - Current FPS (frames per second)
+  - CPU usage percentage
+  - Memory usage (MB)
+  - Max frame time (ms)
+  - Console sends per minute
+  - Uptime (minutes)
+- **Log Format**: `[PROFILING] FPS: 46.9, CPU: 12.5%, Memory: 68.2 MB, Max frame time: 15.32 ms, Console sends/min: 0.0, Uptime: 125.3 min`
+- **Behavior**:
+  - Profiling loop runs in background when `profiling_enabled=true`
+  - Automatically starts/stops with animation loop
+  - Max frame time resets after each log to track worst case per minute
+  - Helps diagnose performance issues without external monitoring tools
+- **Impact**: Easy performance monitoring for diagnosing bottlenecks, FPS drops, or resource usage
+
+### Changed
+- Version bumped from v1.6.5 to v1.7.0
+
+---
+
 ## [1.6.5] - 2026-01-02
 
 ### ✨ API Improvements
@@ -458,6 +513,7 @@ This is the first stable release. Pre-release development history available in c
 - 📝 Documentation
 - 🔧 Maintenance
 
+[1.7.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.7.0
 [1.6.5]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.6.5
 [1.6.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.6.0
 [1.5.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.5.0
