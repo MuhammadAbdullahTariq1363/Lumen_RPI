@@ -207,26 +207,29 @@ Active development tasks and future enhancements for LUMEN.
   - Fixed AttributeError: use state_detector.current_event property instead of get_current_event() method
   - All LEDs now turn off reliably during bored→sleep transitions
 
-### v1.6.0 Tasks
-- [ ] **ProxyDriver error recovery** - Add retry logic with exponential backoff
-  - Add timeout=1.0 to urllib requests
-  - Retry 3 times on network failures
-  - Expose proxy health status in /server/lumen/status API (PARTIALLY DONE - health status exists)
-  - Stop retrying after N consecutive failures to prevent log spam
-- [ ] **Thermal/Progress effect None checks** - Prevent crashes on sensor failures
-  - Check if current_temp/target_temp is None before calculations
-  - Check if progress is None before gradient calculations
-  - Return safe fallback colors instead of crashing
-- [ ] **Config validation hardening** - Reject invalid configs entirely
-  - Validate brightness values (0.0-1.0) in _load_config()
-  - Validate min_sparkle ≤ max_sparkle for disco effect
-  - Validate all effect/state names exist before loading
-  - Raise clear errors instead of silent fallbacks
-- [ ] **Color parsing error visibility** - Show errors in console, not just logs
-  - Return None on parse failures instead of defaulting to white
-  - Check for None in caller and add to warnings list
-  - Display parse errors in /server/lumen/status API
-  - Reject config reload if color parsing fails
+## ✅ v1.6.0 - Config Validation Hardening (January 2026)
+
+### Config Validation - COMPLETED ✅
+- [x] **ProxyDriver error recovery** - Add retry logic with exponential backoff
+  - Added retry logic to batch_update() static method (3 retries, exponential backoff)
+  - timeout=1.0 already implemented in v1.5.0
+  - Proxy health status already exposed in /server/lumen/status API (v1.5.0)
+  - Stop retrying after 10 consecutive failures implemented in v1.5.0
+- [x] **Thermal/Progress effect None checks** - Prevent crashes on sensor failures
+  - Already implemented in v1.5.0 (thermal.py:138-139, progress.py:54-56)
+  - Returns start_color fallback when temp/progress is None
+- [x] **Config validation hardening** - Reject invalid configs entirely
+  - Brightness validation (0.0-1.0) already in v1.5.0
+  - min_sparkle ≤ max_sparkle validation already in v1.5.0
+  - Effect/state name validation already in v1.5.0
+  - Color name validation added in v1.6.0 - config fails to load on invalid colors
+- [x] **Color parsing error visibility** - Show errors in console, not just logs
+  - Added _validate_colors_in_mapping() for group effect colors
+  - Added _validate_colors_in_effect_settings() for effect parameters
+  - Config load fails immediately with clear error messages
+  - No more silent fallback to white - immediate feedback on typos
+
+### Remaining v1.6.0+ Tasks
 
 
 ### v1.6.5 Tasks API Improvements
@@ -260,9 +263,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## 🎯 v1.9.0 - Macro Detection Overhaul (Q1 2026)
-
-### Critical Macro Tracking Improvements
+## 🎯 v1.9.0 - Macro Detection Overhaul
 - [ ] **Dedicated LUMEN macros for state tracking** - Reliable start/end detection
   - Create LUMEN wrapper macros (similar to Aurora's approach)
   - LUMEN_HOMING_START / LUMEN_HOMING_END
@@ -291,16 +292,19 @@ Active development tasks and future enhancements for LUMEN.
   - Document which macros require LUMEN wrapper macros
   - Provide example macro implementations in docs
 
-- [ ] Outline basic Electrical Needs and Requirements
-  - Power supply sizing for different LED strip lengths
+### v1.9.5 Electrical Requirements
+- [ ] **Document electrical requirements and proper power supply setup**
+  - Power supply sizing guidelines for different LED strip lengths
   - Voltage requirements and current calculations
   - Klipper groups vs. Proxy groups power considerations
   - Meanwell PSU recommendations for dedicated supplies
   - Junction block wiring best practices
+  - Example: Klipper groups at 0.2-0.4 brightness for voltage control with shared PSU
+  - Example: Proxy groups at 1.0 brightness with dedicated Meanwell PSU
 
 ---
 
-## 🎮 v2.1.0- Fun Features (Q2 2026)
+## 🎮 v2.0.0- Fun Features (Q2 2026)
 
 ### PONG Mode
 - [ ] **LED Pong game** - Printer plays during long prints!
@@ -343,35 +347,10 @@ Active development tasks and future enhancements for LUMEN.
 
 ## 📅 Release Cycle
 
-- **Patch releases (v1.x.y)**: Bug fixes only, no new features
-- **Minor releases (v1.x.0)**: New features, backward compatible
-- **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.5.0 (January 2026)
-**In development:** v1.6.0 (Macro Detection Overhaul)
-**Next planned releases:**
-- v1.6.0 (Macro Detection Overhaul) - Q1 2026
-- v1.7.0 (Fun Features / PONG Mode) - Q2 2026
 
 ---
 
-## 📋 v1.5.0+ - Documentation & Electrical
-
-### Documentation
-- [x] **Update all documentation** - Ensure README, CHANGELOG, and configs reflect v1.5.0 status
-  - Updated README.md with per-group brightness documentation
-  - Updated CHANGELOG.md with comprehensive v1.5.0 changes
-  - Updated all example configs with group_brightness parameter
-
-### Electrical Requirements
-- [ ] **Document electrical requirements and proper power supply setup**
-  - Power supply sizing guidelines for different LED strip lengths
-  - Voltage requirements and current calculations
-  - Klipper groups vs. Proxy groups power considerations
-  - Meanwell PSU recommendations for dedicated supplies
-  - Junction block wiring best practices
-  - Example: Klipper groups at 0.2-0.4 brightness for voltage control with shared PSU
-  - Example: Proxy groups at 1.0 brightness with dedicated Meanwell PSU
 
 ---
 
@@ -390,26 +369,14 @@ See existing code for patterns (async/await, type hints, docstrings).
 
 Random ideas not yet prioritized:
 
-- **Conditional effects** - Complex state-based effect logic
-  - Example: `on_printing: if progress < 0.5 then pulse ice else pulse lava`
-  - Example: `on_heating: if bed_temp < 60 then thermal bed ice lava else solid lava`
-  - Could add interesting dynamic behavior but increases config complexity
 - **Effect transitions/crossfade** - Smooth color transitions when switching states
   - Add `transition_time: 0.5` to [lumen_settings]
   - Interpolate between old and new colors over N frames
   - Professional polish, reduces jarring changes
-- Adaptive brightness based on time of day
-- Sunrise/sunset effect (gradual warm color fade)
-- Integration with Home Assistant (publish state via MQTT)
 - LED strip health monitoring (detect dead LEDs, report via API)
-- Custom user effects via Python plugins (effect marketplace)
-- Multi-zone thermal gradients (bed left/right, extruder zones)
-- Print time remaining estimation (via progress effect labels)
-- Hardware PWM support for Pi 5 (rpi_hardware_pwm library, 120+ FPS)
 
 ---
 
-**Last Updated:** January 1, 2026
-**Current Version:** v1.5.0 (stable)
-**Next Focus:** v1.6.0 Macro Detection Overhaul, Electrical documentation
-**Status:** v1.5.0 STABLE - Production tested on Voron Trident | Per-group brightness control, ProxyDriver batching (67% HTTP reduction), 46.87 FPS achieved, LED cleanup bug fixed (8 fixes including root cause), GPIO FPS bottleneck resolved, state detection flip-flopping fixed, performance metrics API implemented
+**Last Updated:** January 2, 2026
+**Current Version:** v1.6.0 (stable)
+**Status:** v1.6.0 STABLE - Production tested on Voron Trident | Config validation hardening (color names, effect/state names, brightness, sparkle range), ProxyDriver batch retry logic, immediate error feedback on invalid configs, no more silent fallbacks

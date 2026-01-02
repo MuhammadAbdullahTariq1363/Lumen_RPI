@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 import asyncio
 import logging
@@ -421,6 +421,8 @@ class Lumen:
             elif section_type == "lumen_effect" and section_name:
                 # v1.5.0: Validate effect parameters before storing
                 validated_data = self._validate_effect_params(section_name, data)
+                # v1.6.0: Validate color names in effect settings
+                self._validate_colors_in_effect_settings(section_name, validated_data)
                 self.effect_settings[section_name] = validated_data
             
             elif section_type == "lumen_group" and section_name:
@@ -449,6 +451,10 @@ class Lumen:
                     if key.startswith("on_"):
                         event_name = key[3:]
                         parsed = self._parse_effect_color(value)
+
+                        # v1.6.0: Validate color names during config load
+                        self._validate_colors_in_mapping(section_name, event_name, parsed)
+
                         if event_name not in self.event_mappings:
                             self.event_mappings[event_name] = []
                         # Store full parsed dict plus group name
@@ -518,6 +524,79 @@ class Lumen:
                 raise ValueError(f"[lumen_effect {effect_name}] rainbow_spread must be 0.0-1.0, got {value}")
 
         return validated
+
+    def _validate_colors_in_effect_settings(self, effect_name: str, data: Dict[str, str]) -> None:
+        """
+        Validate color names in effect settings during config load (v1.6.0).
+
+        Raises ValueError if any color name is invalid, preventing config load.
+
+        Args:
+            effect_name: Effect name (chase, kitt, etc.)
+            data: Effect settings dict
+        """
+        # Color parameters that might be present in effect settings
+        color_params = [
+            'base_color',         # kitt, fire
+            'chase_color_1',      # chase
+            'chase_color_2',      # chase
+        ]
+
+        for param in color_params:
+            if param in data:
+                color_name = data[param]
+                try:
+                    get_color(color_name)
+                except ValueError:
+                    raise ValueError(
+                        f"[lumen_effect {effect_name}] {param}: "
+                        f"Invalid color '{color_name}'. Use /server/lumen/colors for list of valid colors."
+                    )
+
+    def _validate_colors_in_mapping(self, group_name: str, event_name: str, parsed: Dict[str, Any]) -> None:
+        """
+        Validate color names in effect mapping during config load (v1.6.0).
+
+        Raises ValueError if any color name is invalid, preventing config load.
+        This provides immediate feedback instead of silent fallback at runtime.
+
+        Args:
+            group_name: LED group name
+            event_name: Event name (idle, heating, etc.)
+            parsed: Parsed effect mapping dict
+        """
+        # Check single color (for effects like solid, pulse, etc.)
+        if parsed.get("color"):
+            color_name = parsed["color"]
+            try:
+                get_color(color_name)
+            except ValueError:
+                raise ValueError(
+                    f"[lumen_group {group_name}] on_{event_name}: "
+                    f"Invalid color '{color_name}'. Use /server/lumen/colors for list of valid colors."
+                )
+
+        # Check start_color (for thermal, progress)
+        if parsed.get("start_color"):
+            color_name = parsed["start_color"]
+            try:
+                get_color(color_name)
+            except ValueError:
+                raise ValueError(
+                    f"[lumen_group {group_name}] on_{event_name}: "
+                    f"Invalid start_color '{color_name}'. Use /server/lumen/colors for list of valid colors."
+                )
+
+        # Check end_color (for thermal, progress)
+        if parsed.get("end_color"):
+            color_name = parsed["end_color"]
+            try:
+                get_color(color_name)
+            except ValueError:
+                raise ValueError(
+                    f"[lumen_group {group_name}] on_{event_name}: "
+                    f"Invalid end_color '{color_name}'. Use /server/lumen/colors for list of valid colors."
+                )
 
     def _parse_macro_list(self, value: str) -> List[str]:
         """Parse comma-separated macro list and return uppercase list."""

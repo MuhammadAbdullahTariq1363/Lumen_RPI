@@ -465,24 +465,37 @@ class ProxyDriver(LEDDriver):
         payload = {"updates": updates}
         data = json.dumps(payload).encode('utf-8')
 
-        def _send():
-            try:
-                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=1.0) as resp:
-                    if resp.getcode() == 200:
-                        return True, None
-            except Exception as e:
-                return False, str(e)
-            return False, "Unknown error"
+        # v1.6.0: Add retry logic with exponential backoff
+        max_retries = 3
+        for attempt in range(max_retries):
+            # Exponential backoff: 0s, 0.1s, 0.2s
+            if attempt > 0:
+                await asyncio.sleep(attempt * 0.1)
 
-        try:
-            success, error = await asyncio.to_thread(_send)
-            if not success:
-                _logger.warning(f"[LUMEN] ProxyDriver batch_update failed: {error}")
-            return success
-        except Exception as e:
-            _logger.warning(f"[LUMEN] ProxyDriver batch_update exception: {e}")
-            return False
+            def _send():
+                try:
+                    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                    with urllib.request.urlopen(req, timeout=1.0) as resp:
+                        if resp.getcode() == 200:
+                            return True, None
+                except Exception as e:
+                    return False, str(e)
+                return False, "Unknown error"
+
+            try:
+                success, error = await asyncio.to_thread(_send)
+                if success:
+                    return True
+                else:
+                    # On last attempt, log the error
+                    if attempt == max_retries - 1:
+                        _logger.warning(f"[LUMEN] ProxyDriver batch_update failed after {max_retries} retries: {error}")
+            except Exception as e:
+                # On last attempt, log the exception
+                if attempt == max_retries - 1:
+                    _logger.warning(f"[LUMEN] ProxyDriver batch_update exception after {max_retries} retries: {e}")
+
+        return False
 
 
 def create_driver(name: str, config: Dict[str, Any], server: Any) -> Optional[LEDDriver]:

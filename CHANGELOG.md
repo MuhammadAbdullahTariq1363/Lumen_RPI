@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-01-02
+
+### 🔧 Config Validation Hardening
+
+#### ProxyDriver Retry Logic Enhancement
+- **Added**: Retry logic with exponential backoff to `batch_update()` static method (drivers.py:468-498)
+- **Behavior**: 3 retry attempts with 0s, 0.1s, 0.2s delays between attempts
+- **Logging**: Only logs warning on final retry failure to prevent log spam
+- **Impact**: Improved resilience for batched LED updates during network hiccups
+- **Note**: Individual ProxyDriver methods already had retry logic from v1.5.0
+
+#### Color Name Validation
+- **Added**: `_validate_colors_in_mapping()` validates color names during config load (lumen.py:556-599)
+- **Added**: `_validate_colors_in_effect_settings()` validates effect color parameters (lumen.py:528-554)
+- **Validates**: `color`, `start_color`, `end_color`, `base_color`, `chase_color_1`, `chase_color_2`
+- **Behavior**: Config load fails immediately with clear error message if invalid color found
+- **Error format**: `[lumen_group left] on_idle: Invalid color 'bleu'. Use /server/lumen/colors for list of valid colors.`
+- **Impact**: Immediate feedback on typos instead of silent fallback to white at runtime
+- **Breaking change**: Configs with typos in color names will now fail to load (was silent before)
+
+#### Validation Summary (v1.5.0 + v1.6.0)
+All validation now happens during config load, preventing invalid configs from loading:
+- ✅ **Brightness values** (0.0-1.0) - v1.5.0
+- ✅ **Speed values** (> 0) - v1.5.0
+- ✅ **Sparkle range** (min_sparkle ≤ max_sparkle) - v1.5.0
+- ✅ **Effect names** (must exist in EFFECT_REGISTRY) - v1.5.0
+- ✅ **Event names** (must be valid printer state) - v1.5.0
+- ✅ **Color names** (must exist in color palette) - v1.6.0 ✨ NEW
+
+### Changed
+- Version bumped from v1.5.0 to v1.6.0
+
+---
+
 ## [1.5.0] - 2026-01-01
 
 ### 🐛 Critical Bug Fixes
@@ -380,6 +414,7 @@ This is the first stable release. Pre-release development history available in c
 - 📝 Documentation
 - 🔧 Maintenance
 
+[1.6.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.6.0
 [1.5.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.5.0
 [1.4.1]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.1
 [1.4.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.0

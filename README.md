@@ -5,10 +5,10 @@
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.5.0-blue)]()
+[![Version](https://img.shields.io/badge/version-v1.6.0-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.5.0 Release** - Critical bug fixes (GPIO FPS bottleneck, state flip-flopping) + ProxyDriver batching optimization (67% HTTP overhead reduction)
+> **v1.6.0 Release** - Config validation hardening: Color name validation, ProxyDriver batch retry logic
 
 ---
 
