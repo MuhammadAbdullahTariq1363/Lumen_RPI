@@ -149,7 +149,7 @@ Active development tasks and future enhancements for LUMEN.
 
 ---
 
-## ✅ v1.5.0 - Critical Bug Fixes (January 2026)
+## ✅ v1.5.0 - Critical Bug Fixes & Performance (January 2026)
 
 ### Critical Bug Fixes - COMPLETED ✅
 - [x] **GPIO Driver FPS Bottleneck** - Fixed module identity mismatch causing 5s update intervals instead of 60 FPS
@@ -157,7 +157,7 @@ Active development tasks and future enhancements for LUMEN.
   - Added missing GPIODriver, ProxyDriver to top-level imports
   - Added _cache_driver_intervals() call after config reload
   - GPIO strips now update at true 0.0167s intervals (60 FPS target)
-  - Achieving 31+ actual FPS in animation loop
+  - Achieving 46.87 actual FPS in animation loop
 - [x] **State Detection Flip-Flopping** - Fixed heating/printing state transitions
   - Added MIN_PRINT_TEMP = 200°C threshold to distinguish PRINT_START prep from actual printing
   - Fixed heating detector to stay active when ANY heater has target > 0
@@ -170,12 +170,44 @@ Active development tasks and future enhancements for LUMEN.
   - Shows actual animation loop performance
   - Minimal overhead
 
-### Remaining v1.5.0 Tasks
-- [ ] **Brightness control investigation** - Verify brightness levels are noticeable across states/effects
-- [ ] **Performance impact analysis** - Analyze if LUMEN is slowing Klipper down
-  - Review console logging frequency
-  - Check for repeated calls while Klipper is blocked
-  - Measure actual CPU/memory impact during prints
+### Performance Optimizations - COMPLETED ✅
+- [x] **ProxyDriver Batch Updates** - Reduced HTTP overhead by 67%
+  - Added /batch_update endpoint to ws281x_proxy.py
+  - Animation loop now batches ProxyDriver updates per proxy server
+  - Single HTTP request per frame instead of one per LED group
+  - HTTP requests: ~84 req/s → ~30 req/s (67% reduction) with 3 groups
+  - Scales efficiently when adding more LED groups
+  - Single strip.show() call per GPIO pin for better efficiency
+- [x] **Performance Metrics API** - Comprehensive monitoring in /server/lumen/status
+  - Real-time FPS counter (46.87 FPS achieved)
+  - HTTP requests per second tracking (0.02 req/s during printing)
+  - Console sends per minute tracking (0.0 sends/min during printing)
+  - CPU and memory usage metrics (13.3% CPU, 66.8 MB memory)
+  - Thermal debug logging disabled during printing to reduce G-code queue pressure
+- [x] **Per-Group Brightness Control** - Fine-grained brightness multipliers
+  - Added group_brightness parameter (0.0-1.0) to each [lumen_group] section
+  - Removed global max_brightness application from base colors
+  - Per-group brightness applied after effect calculation in animation loop
+  - Flow: Base Color (1.0) → Effect Brightness (0.0-1.0) → Group Brightness (0.0-1.0) → Final Output
+  - Enables different brightness per LED group for different power supplies
+  - All example configs updated with group_brightness parameter
+  - Deprecated global max_brightness with warning message
+
+### LED Cleanup Bug Fixes - COMPLETED ✅
+- [x] **Off Effect LED Cleanup** - Fixed LEDs staying on during sleep transitions
+  - Root cause: Multi-group chase coordination continued rendering even after groups switched to "off"
+  - Fix 1: Changed off effect to return per-LED colors [(0,0,0)] * led_count
+  - Fix 2: Added explicit per-LED clearing in immediate effect application
+  - Fix 3: Skip animation loop rendering for "off" effect
+  - Fix 4: Added debug logging for LED clearing verification
+  - Fix 5: Added timing delays and double-send to prevent race conditions
+  - Fix 6: Skip multi-group chase rendering if any chase group has "off" effect
+  - Fix 7: Added delayed cleanup task for sleep state (2-second fallback)
+  - Fix 8: Block chase group detection entirely during sleep state (ROOT CAUSE FIX)
+  - Fixed AttributeError: use state_detector.current_event property instead of get_current_event() method
+  - All LEDs now turn off reliably during bored→sleep transitions
+
+### v1.6.0 Tasks
 - [ ] **ProxyDriver error recovery** - Add retry logic with exponential backoff
   - Add timeout=1.0 to urllib requests
   - Retry 3 times on network failures
@@ -196,21 +228,14 @@ Active development tasks and future enhancements for LUMEN.
   - Display parse errors in /server/lumen/status API
   - Reject config reload if color parsing fails
 
-### Configuration Enhancements
-- [ ] **Group Min/Max brightness** - Allow group-based min/max brightness override
-- [ ] **Effect presets library** - Ship ready-to-use config presets
-  - presets/subtle.cfg - Calm pulse effects, low brightness
-  - presets/gaming.cfg - Rainbow, disco, high brightness
-  - presets/professional.cfg - Solid colors only
-  - presets/voron.cfg - Voron-specific multi-zone setup
 
-### API Improvements
+### v1.6.5 Tasks API Improvements
 - [ ] **GET /server/lumen/effects** - List all available effects and parameters
 - [ ] **POST /server/lumen/set_group** - Temporarily override group effect via API
 - [ ] **WebSocket notifications** - Broadcast state changes to Mainsail/Fluidd
 - [ ] **Macro integration** - LUMEN_SET_RELOAD reload lumen after a .cfg change
 
-### Debugging Tools
+### v1.7.0 Tasks Debugging Tools
 - [ ] **Effect/state testing mode** - Test effects/states using simple macros
   - LUMEN_TEST_START - Enter test mode
   - LUMEN_TEST_NEXT_STATE - Cycle to next state
@@ -229,13 +254,13 @@ Active development tasks and future enhancements for LUMEN.
 - [ ] **Effect calculation tests** - Verify each effect's output
 - [ ] **Driver tests** - Mock driver responses
 
-### Documentation
+### v1.8.0 Tasks Documentation
 - [ ] **Color reference with visuals** - GitHub page showing all 50+ colors
 - [ ] **Web-based configuration UI** - Visual config editor (research phase)
 
 ---
 
-## 🎯 v1.6.0 - Macro Detection Overhaul (Q1 2026)
+## 🎯 v1.9.0 - Macro Detection Overhaul (Q1 2026)
 
 ### Critical Macro Tracking Improvements
 - [ ] **Dedicated LUMEN macros for state tracking** - Reliable start/end detection
@@ -266,9 +291,16 @@ Active development tasks and future enhancements for LUMEN.
   - Document which macros require LUMEN wrapper macros
   - Provide example macro implementations in docs
 
+- [ ] Outline basic Electrical Needs and Requirements
+  - Power supply sizing for different LED strip lengths
+  - Voltage requirements and current calculations
+  - Klipper groups vs. Proxy groups power considerations
+  - Meanwell PSU recommendations for dedicated supplies
+  - Junction block wiring best practices
+
 ---
 
-## 🎮 v1.7.0 - Fun Features (Q2 2026)
+## 🎮 v2.1.0- Fun Features (Q2 2026)
 
 ### PONG Mode
 - [ ] **LED Pong game** - Printer plays during long prints!
@@ -315,12 +347,31 @@ Active development tasks and future enhancements for LUMEN.
 - **Minor releases (v1.x.0)**: New features, backward compatible
 - **Major releases (v2.0.0+)**: Breaking changes (config format, API changes)
 
-**Current stable:** v1.4.1 (December 2025)
-**In development:** v1.5.0 (Stability & Error Handling)
+**Current stable:** v1.5.0 (January 2026)
+**In development:** v1.6.0 (Macro Detection Overhaul)
 **Next planned releases:**
-- v1.5.0 (Stability & Error Handling) - Q1 2026
 - v1.6.0 (Macro Detection Overhaul) - Q1 2026
 - v1.7.0 (Fun Features / PONG Mode) - Q2 2026
+
+---
+
+## 📋 v1.5.0+ - Documentation & Electrical
+
+### Documentation
+- [x] **Update all documentation** - Ensure README, CHANGELOG, and configs reflect v1.5.0 status
+  - Updated README.md with per-group brightness documentation
+  - Updated CHANGELOG.md with comprehensive v1.5.0 changes
+  - Updated all example configs with group_brightness parameter
+
+### Electrical Requirements
+- [ ] **Document electrical requirements and proper power supply setup**
+  - Power supply sizing guidelines for different LED strip lengths
+  - Voltage requirements and current calculations
+  - Klipper groups vs. Proxy groups power considerations
+  - Meanwell PSU recommendations for dedicated supplies
+  - Junction block wiring best practices
+  - Example: Klipper groups at 0.2-0.4 brightness for voltage control with shared PSU
+  - Example: Proxy groups at 1.0 brightness with dedicated Meanwell PSU
 
 ---
 
@@ -360,5 +411,5 @@ Random ideas not yet prioritized:
 
 **Last Updated:** January 1, 2026
 **Current Version:** v1.5.0 (stable)
-**Next Focus:** Brightness control investigation, performance impact analysis
-**Status:** v1.5.0 Stable - Production tested on Voron Trident | Fixed critical GPIO FPS bottleneck (module identity mismatch), fixed state detection flip-flopping (MIN_PRINT_TEMP threshold, heating detector logic), added real-time FPS counter, eliminated log spam
+**Next Focus:** v1.6.0 Macro Detection Overhaul, Electrical documentation
+**Status:** v1.5.0 STABLE - Production tested on Voron Trident | Per-group brightness control, ProxyDriver batching (67% HTTP reduction), 46.87 FPS achieved, LED cleanup bug fixed (8 fixes including root cause), GPIO FPS bottleneck resolved, state detection flip-flopping fixed, performance metrics API implemented
