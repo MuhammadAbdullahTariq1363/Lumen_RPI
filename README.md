@@ -5,10 +5,10 @@
 Smart LED effects that respond to your printer's state in real-time. No macros, no delays, no `AURORA_WAKE` commands.
 
 [![Status](https://img.shields.io/badge/status-stable-brightgreen)]()
-[![Version](https://img.shields.io/badge/version-v1.6.0-blue)]()
+[![Version](https://img.shields.io/badge/version-v1.6.5-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **v1.6.0 Release** - Config validation hardening: Color name validation, ProxyDriver batch retry logic
+> **v1.6.5 Release** - API improvements: Effects listing, group overrides, macro integration
 
 ---
 
@@ -444,26 +444,30 @@ gradient_curve: 1.5        # Slightly sharper toward 100%
 |----------|--------|-------------|
 | `/server/lumen/status` | GET | Current state, config, LED groups, performance metrics, warnings |
 | `/server/lumen/colors` | GET | List all available color names |
+| `/server/lumen/effects` | GET | List all effects and their parameters (v1.6.5) |
 | `/server/lumen/test_event?event=STATE` | POST | Manually trigger a state (heating, printing, etc) |
+| `/server/lumen/set_group` | POST | Temporarily override group effect (v1.6.5) |
 | `/server/lumen/reload` | POST | Hot reload lumen.cfg without Moonraker restart |
 
-**Status API Response (v1.5.0):**
+**Effects API Response (v1.6.5):**
 ```json
 {
-  "version": "1.5.0",
-  "klippy_ready": true,
-  "detector": { "current_event": "printing", ... },
-  "printer": { "bed_temp": 100.0, "extruder_temp": 260.0, ... },
-  "animation": { "running": true, "fps": 46.87, "effects": {...} },
-  "performance": {
-    "fps": 46.87,
-    "max_frame_time_ms": 43.28,
-    "http_requests_per_second": 0.02,
-    "console_sends_per_minute": 0.0,
-    "cpu_percent": 13.3,
-    "memory_mb": 66.8
+  "effects": {
+    "chase": {
+      "name": "chase",
+      "description": "Predator/prey chase with multi-group coordination",
+      "requires_led_count": true,
+      "requires_state_data": false,
+      "parameters": {
+        "speed": {"type": "float", "default": 50.0, "min": 0.01},
+        "chase_size": {"type": "int", "default": 2, "min": 1},
+        "chase_color_1": {"type": "color", "default": "lava"},
+        "chase_color_2": {"type": "color", "default": "ice"}
+      }
+    },
+    ...
   },
-  "driver_health": { ... }
+  "count": 12
 }
 ```
 
@@ -472,8 +476,8 @@ gradient_curve: 1.5        # Slightly sharper toward 100%
 # Check status with performance metrics
 curl http://localhost:7125/server/lumen/status | jq
 
-# Monitor performance during printing
-curl -s http://localhost:7125/server/lumen/status | jq '.result.performance'
+# List all effects and parameters
+curl http://localhost:7125/server/lumen/effects | jq
 
 # List colors
 curl http://localhost:7125/server/lumen/colors | jq
@@ -481,8 +485,39 @@ curl http://localhost:7125/server/lumen/colors | jq
 # Test heating effect
 curl -X POST "http://localhost:7125/server/lumen/test_event?event=heating"
 
+# Override group effect (temporary, 10 seconds)
+curl -X POST "http://localhost:7125/server/lumen/set_group?group=left&effect=pulse&color=red&duration=10"
+
+# Override group effect (until next state change)
+curl -X POST "http://localhost:7125/server/lumen/set_group?group=chamber&effect=solid&color=white"
+
 # Hot reload config after editing
 curl -X POST "http://localhost:7125/server/lumen/reload"
+```
+
+### Macro Integration (v1.6.5)
+
+Add `examples/lumen_macros.cfg` to your printer.cfg for convenient LED control:
+
+```gcode
+# Reload LUMEN configuration
+LUMEN_RELOAD
+
+# Test specific states
+LUMEN_TEST STATE=heating
+
+# Override group effects
+LUMEN_SET GROUP=chamber EFFECT=solid COLOR=white DURATION=10
+LUMEN_SET GROUP=left EFFECT=pulse COLOR=blue
+```
+
+**Example integration with PRINT_START:**
+```gcode
+[gcode_macro PRINT_START]
+gcode:
+    # ... existing code ...
+    LUMEN_SET GROUP=chamber EFFECT=solid COLOR=white  # Bright white for printing
+    # ... rest of code ...
 ```
 
 ---

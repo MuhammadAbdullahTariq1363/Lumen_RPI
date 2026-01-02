@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.5] - 2026-01-02
+
+### ✨ API Improvements
+
+#### GET /server/lumen/effects
+- **Added**: Comprehensive effects listing API endpoint (lumen.py:1835-1984)
+- **Returns**: Complete effect catalog with parameter info, defaults, ranges, and descriptions
+- **Info per effect**: name, description, requires_led_count, requires_state_data, parameters
+- **Parameters documented**: speed, brightness, sparkle, rainbow_spread, fire_cooling, chase colors, KITT settings, gradient curves
+- **Usage**: `curl http://localhost:7125/server/lumen/effects | jq`
+- **Impact**: Developers and UI builders can discover available effects and their configuration options dynamically
+
+#### POST /server/lumen/set_group
+- **Added**: Temporary group effect override API endpoint (lumen.py:1986-2067)
+- **Parameters**: `group` (required), `effect` (required), `color` (optional), `duration` (optional)
+- **Behavior**: Immediately applies effect override, reverts after duration or on next state change
+- **Validation**: Validates group name, effect name, and color name with helpful error messages
+- **Usage**:
+  - `curl -X POST "http://localhost:7125/server/lumen/set_group?group=left&effect=pulse&color=red&duration=10"`
+  - `curl -X POST "http://localhost:7125/server/lumen/set_group?group=chamber&effect=solid&color=white"`
+- **Impact**: Enable dynamic LED control from macros, external scripts, or custom UIs
+
+#### Macro Integration
+- **Added**: Example macro file `examples/lumen_macros.cfg` with ready-to-use Klipper macros
+- **Macros provided**:
+  - `LUMEN_RELOAD` - Reload configuration without Moonraker restart
+  - `LUMEN_TEST STATE=<state>` - Test specific printer states
+  - `LUMEN_SET GROUP=<group> EFFECT=<effect> COLOR=<color> DURATION=<seconds>` - Override group effects
+- **Usage**: Add to printer.cfg for convenient LED control
+- **Examples**:
+  ```gcode
+  LUMEN_SET GROUP=chamber EFFECT=solid COLOR=white  # Bright white during printing
+  LUMEN_RELOAD  # Return to normal state cycle
+  ```
+- **Impact**: Seamless integration with existing print macros (PRINT_START, PRINT_END, etc.)
+
+#### Deferred Features
+- **WebSocket notifications**: Deferred to v1.7.0 - requires additional architecture design for efficient state change broadcasting
+
+### Changed
+- Version bumped from v1.6.0 to v1.6.5
+
+---
+
 ## [1.6.0] - 2026-01-02
 
 ### 🔧 Config Validation Hardening
@@ -414,6 +458,7 @@ This is the first stable release. Pre-release development history available in c
 - 📝 Documentation
 - 🔧 Maintenance
 
+[1.6.5]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.6.5
 [1.6.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.6.0
 [1.5.0]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.5.0
 [1.4.1]: https://github.com/MakesBadDecisions/Lumen_RPI/releases/tag/v1.4.1

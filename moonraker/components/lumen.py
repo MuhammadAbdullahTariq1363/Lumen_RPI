@@ -10,7 +10,7 @@ Installation:
 
 from __future__ import annotations
 
-__version__ = "1.6.0"
+__version__ = "1.6.5"
 
 import asyncio
 import logging
@@ -148,6 +148,9 @@ class Lumen:
         self.server.register_endpoint("/server/lumen/colors", ["GET"], self._handle_colors)
         self.server.register_endpoint("/server/lumen/test_event", ["POST"], self._handle_test_event)
         self.server.register_endpoint("/server/lumen/reload", ["POST"], self._handle_reload)
+        # v1.6.5: New API endpoints
+        self.server.register_endpoint("/server/lumen/effects", ["GET"], self._handle_effects)
+        self.server.register_endpoint("/server/lumen/set_group", ["POST"], self._handle_set_group)
         
         # Log initialization
         self._log_info(f"Initialized with {len(self.led_groups)} groups")
@@ -1826,8 +1829,242 @@ class Lumen:
         
         if self.config_warnings:
             result["warnings"] = self.config_warnings
-        
+
         return result
+
+    async def _handle_effects(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        GET /server/lumen/effects - List all available effects and their parameters (v1.6.5).
+
+        Returns comprehensive information about each effect including:
+        - Effect name and description
+        - Configurable parameters and their defaults
+        - Valid parameter ranges
+        - Example usage
+        """
+        effects_info = {}
+
+        for effect_name in sorted(EFFECT_REGISTRY.keys()):
+            effect_class = EFFECT_REGISTRY[effect_name]
+            effect_instance = effect_class()
+
+            # Get effect defaults from effect_settings
+            effect_params = self.effect_settings.get(effect_name, {})
+
+            # Build parameter info
+            info = {
+                "name": effect_name,
+                "description": effect_instance.description if hasattr(effect_instance, 'description') else f"{effect_name.title()} effect",
+                "requires_led_count": effect_instance.requires_led_count,
+                "requires_state_data": effect_instance.requires_state_data,
+                "parameters": {},
+            }
+
+            # Add common parameters
+            if effect_name not in ['off']:
+                info["parameters"]["speed"] = {
+                    "type": "float",
+                    "default": float(effect_params.get("speed", 1.0)),
+                    "min": 0.01,
+                    "description": "Animation speed"
+                }
+                info["parameters"]["min_brightness"] = {
+                    "type": "float",
+                    "default": float(effect_params.get("min_brightness", 0.2)),
+                    "min": 0.0,
+                    "max": 1.0,
+                    "description": "Minimum brightness"
+                }
+                info["parameters"]["max_brightness"] = {
+                    "type": "float",
+                    "default": float(effect_params.get("max_brightness", 1.0)),
+                    "min": 0.0,
+                    "max": 1.0,
+                    "description": "Maximum brightness"
+                }
+
+            # Effect-specific parameters
+            if effect_name == "disco":
+                info["parameters"]["min_sparkle"] = {
+                    "type": "int",
+                    "default": int(effect_params.get("min_sparkle", 1)),
+                    "min": 0,
+                    "description": "Minimum LEDs lit per update"
+                }
+                info["parameters"]["max_sparkle"] = {
+                    "type": "int",
+                    "default": int(effect_params.get("max_sparkle", 6)),
+                    "min": 1,
+                    "description": "Maximum LEDs lit per update"
+                }
+
+            elif effect_name == "rainbow":
+                info["parameters"]["rainbow_spread"] = {
+                    "type": "float",
+                    "default": float(effect_params.get("rainbow_spread", 1.0)),
+                    "min": 0.0,
+                    "max": 1.0,
+                    "description": "Spectrum spread across strip"
+                }
+
+            elif effect_name == "fire":
+                info["parameters"]["fire_cooling"] = {
+                    "type": "float",
+                    "default": float(effect_params.get("fire_cooling", 0.4)),
+                    "min": 0.0,
+                    "max": 1.0,
+                    "description": "Cooling rate (higher = more chaotic)"
+                }
+
+            elif effect_name == "comet":
+                info["parameters"]["comet_tail_length"] = {
+                    "type": "int",
+                    "default": int(effect_params.get("comet_tail_length", 4)),
+                    "min": 1,
+                    "description": "Length of trailing tail (LEDs)"
+                }
+                info["parameters"]["comet_fade_rate"] = {
+                    "type": "float",
+                    "default": float(effect_params.get("comet_fade_rate", 0.9)),
+                    "min": 0.0,
+                    "max": 1.0,
+                    "description": "How quickly tail fades"
+                }
+
+            elif effect_name == "chase":
+                info["parameters"]["chase_size"] = {
+                    "type": "int",
+                    "default": int(effect_params.get("chase_size", 2)),
+                    "min": 1,
+                    "description": "LEDs per chase segment"
+                }
+                info["parameters"]["chase_color_1"] = {
+                    "type": "color",
+                    "default": effect_params.get("chase_color_1", "lava"),
+                    "description": "Predator color"
+                }
+                info["parameters"]["chase_color_2"] = {
+                    "type": "color",
+                    "default": effect_params.get("chase_color_2", "ice"),
+                    "description": "Prey color"
+                }
+
+            elif effect_name == "kitt":
+                info["parameters"]["kitt_eye_size"] = {
+                    "type": "int",
+                    "default": int(effect_params.get("kitt_eye_size", 3)),
+                    "min": 1,
+                    "description": "LEDs in bright center eye"
+                }
+                info["parameters"]["kitt_tail_length"] = {
+                    "type": "int",
+                    "default": int(effect_params.get("kitt_tail_length", 2)),
+                    "min": 0,
+                    "description": "Fading LEDs on each side"
+                }
+                info["parameters"]["base_color"] = {
+                    "type": "color",
+                    "default": effect_params.get("base_color", "red"),
+                    "description": "Scanner color"
+                }
+
+            elif effect_name in ["thermal", "progress"]:
+                info["parameters"]["gradient_curve"] = {
+                    "type": "float",
+                    "default": float(effect_params.get("gradient_curve", 1.0)),
+                    "min": 0.1,
+                    "description": "Gradient curve (1.0=linear, >1=sharp at end)"
+                }
+
+            effects_info[effect_name] = info
+
+        return {
+            "effects": effects_info,
+            "count": len(effects_info)
+        }
+
+    async def _handle_set_group(self, web_request: WebRequest) -> Dict[str, Any]:
+        """
+        POST /server/lumen/set_group - Temporarily override a group's effect via API (v1.6.5).
+
+        Parameters:
+            group: Group name (required)
+            effect: Effect name (required)
+            color: Color name (optional, for effects that use color)
+            duration: Override duration in seconds (optional, 0 = permanent until next state change)
+
+        Examples:
+            POST /server/lumen/set_group?group=left&effect=solid&color=red
+            POST /server/lumen/set_group?group=left&effect=pulse&color=blue&duration=10
+        """
+        group_name = web_request.get_str("group", "")
+        effect_name = web_request.get_str("effect", "")
+        color_name = web_request.get_str("color", None)
+        duration = web_request.get_float("duration", 0.0)
+
+        # Validate group exists
+        if not group_name or group_name not in self.drivers:
+            return {
+                "result": "error",
+                "message": f"Unknown group '{group_name}'. Available groups: {', '.join(sorted(self.drivers.keys()))}"
+            }
+
+        # Validate effect exists
+        if effect_name not in EFFECT_REGISTRY:
+            return {
+                "result": "error",
+                "message": f"Unknown effect '{effect_name}'. Use /server/lumen/effects for list of valid effects."
+            }
+
+        # Validate color if provided
+        base_color = (1.0, 1.0, 1.0)  # Default white
+        if color_name:
+            try:
+                base_color = get_color(color_name)
+            except ValueError:
+                return {
+                    "result": "error",
+                    "message": f"Unknown color '{color_name}'. Use /server/lumen/colors for list of valid colors."
+                }
+
+        # Apply effect override
+        driver = self.drivers[group_name]
+        state = self.effect_states.get(group_name, EffectState())
+
+        # Update state with override
+        state.effect = effect_name
+        state.base_color = base_color
+        self.effect_states[group_name] = state
+
+        # Apply the effect immediately
+        await self._apply_effect(group_name, effect_name, state.base_color, driver)
+
+        # If duration specified, schedule revert to current event mapping
+        if duration > 0:
+            async def _revert_override():
+                await asyncio.sleep(duration)
+                current_event = self.state_detector.current_event
+                await self._apply_event(current_event)
+                self._log_debug(f"Group '{group_name}' override expired, reverted to {current_event.value}")
+
+            asyncio.create_task(_revert_override())
+
+            return {
+                "result": "ok",
+                "group": group_name,
+                "effect": effect_name,
+                "color": color_name,
+                "duration": duration,
+                "message": f"Override applied for {duration}s"
+            }
+        else:
+            return {
+                "result": "ok",
+                "group": group_name,
+                "effect": effect_name,
+                "color": color_name,
+                "message": "Override applied until next state change"
+            }
 
 
 def load_component(config: ConfigHelper) -> Lumen:

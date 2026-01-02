@@ -229,14 +229,27 @@ Active development tasks and future enhancements for LUMEN.
   - Config load fails immediately with clear error messages
   - No more silent fallback to white - immediate feedback on typos
 
-### Remaining v1.6.0+ Tasks
+## ✅ v1.6.5 - API Improvements (January 2026)
 
+### API Enhancements - COMPLETED ✅
+- [x] **GET /server/lumen/effects** - List all available effects and parameters
+  - Comprehensive effect catalog with parameter info, defaults, ranges, descriptions
+  - Returns name, description, requires_led_count, requires_state_data, parameters
+  - Documents speed, brightness, sparkle, rainbow_spread, chase colors, KITT settings, gradient curves
+  - Usage: `curl http://localhost:7125/server/lumen/effects | jq`
+- [x] **POST /server/lumen/set_group** - Temporarily override group effect via API
+  - Parameters: group (required), effect (required), color (optional), duration (optional)
+  - Validates group name, effect name, and color name with helpful error messages
+  - Immediately applies override, reverts after duration or on next state change
+  - Usage: `curl -X POST "http://localhost:7125/server/lumen/set_group?group=left&effect=pulse&color=red&duration=10"`
+- [x] **Macro integration** - Klipper macros for LUMEN control
+  - Created examples/lumen_macros.cfg with LUMEN_RELOAD, LUMEN_TEST, LUMEN_SET macros
+  - Ready-to-use examples for PRINT_START/PRINT_END integration
+  - Convenient LED control from G-code macros
 
-### v1.6.5 Tasks API Improvements
-- [ ] **GET /server/lumen/effects** - List all available effects and parameters
-- [ ] **POST /server/lumen/set_group** - Temporarily override group effect via API
+### Deferred Features
 - [ ] **WebSocket notifications** - Broadcast state changes to Mainsail/Fluidd
-- [ ] **Macro integration** - LUMEN_SET_RELOAD reload lumen after a .cfg change
+  - Deferred to v1.7.0 - requires additional architecture design for efficient broadcasting
 
 ### v1.7.0 Tasks Debugging Tools
 - [ ] **Effect/state testing mode** - Test effects/states using simple macros
@@ -378,5 +391,5 @@ Random ideas not yet prioritized:
 ---
 
 **Last Updated:** January 2, 2026
-**Current Version:** v1.6.0 (stable)
-**Status:** v1.6.0 STABLE - Production tested on Voron Trident | Config validation hardening (color names, effect/state names, brightness, sparkle range), ProxyDriver batch retry logic, immediate error feedback on invalid configs, no more silent fallbacks
+**Current Version:** v1.6.5 (stable)
+**Status:** v1.6.5 STABLE - Production tested on Voron Trident | API improvements (effects listing, group overrides, macro integration), config validation hardening, ProxyDriver batch retry logic, immediate error feedback on invalid configs
