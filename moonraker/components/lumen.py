@@ -928,7 +928,18 @@ class Lumen:
         # Apply immediate effects FIRST (before updating state)
         # This ensures the driver shows the correct state immediately
         if effect == "off":
-            await driver.set_off()
+            # v1.5.0: Additional safety - explicitly clear all LEDs
+            # Send per-LED off colors to ensure complete cleanup
+            led_count = driver.led_count if hasattr(driver, 'led_count') else 1
+            self._log_debug(f"Turning off group '{group_name}': led_count={led_count}, driver={type(driver).__name__}")
+            if hasattr(driver, 'set_leds') and led_count > 1:
+                # Use set_leds for multi-LED groups to ensure all LEDs are cleared
+                await driver.set_leds([(0.0, 0.0, 0.0)] * led_count)
+                self._log_debug(f"Group '{group_name}': sent {led_count} black colors via set_leds()")
+            else:
+                # Fall back to set_off for single LED or drivers without set_leds
+                await driver.set_off()
+                self._log_debug(f"Group '{group_name}': called set_off()")
         elif effect == "solid":
             await driver.set_color(r, g, b)
         elif effect in ("pulse", "heartbeat", "disco"):
