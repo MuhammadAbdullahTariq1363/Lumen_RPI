@@ -97,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fix 6 only skipped rendering but detection still happened, causing chase to continue
   - Now returns empty dict immediately if current event is "sleep"
   - Completely prevents multi-group chase coordination from running during sleep
+  - **Bugfix**: Fixed AttributeError - use `state_detector.current_event` property instead of `get_current_event()` method (lumen.py:1063, 1030)
 - **Impact**: Fixed bug where some LEDs stayed on during bored→sleep transition after multi-LED effects (disco, chase, etc.)
 
 ### Changed

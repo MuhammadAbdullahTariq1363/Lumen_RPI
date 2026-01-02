@@ -1027,7 +1027,7 @@ class Lumen:
         await asyncio.sleep(2.0)
 
         # Check if we're still in sleep state
-        current_event = self.state_detector.get_current_event()
+        current_event = self.state_detector.current_event
         if current_event != "sleep":
             return  # State changed, abort cleanup
 
@@ -1060,7 +1060,7 @@ class Lumen:
         """
         # v1.5.0 Fix 8: Don't detect chase groups if current event is "sleep"
         # This prevents chase from continuing to render during sleep state
-        current_event = self.state_detector.get_current_event()
+        current_event = self.state_detector.current_event
         if current_event == "sleep":
             return {}
 
