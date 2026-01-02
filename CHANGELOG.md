@@ -92,6 +92,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Waits 2 seconds after sleep event, then sends final off commands to all groups
   - Ensures LEDs turn off even if there are persistent issues at driver/hardware level
   - Logs cleanup actions for debugging
+- **Fix 8**: Block chase group detection entirely during sleep state (lumen.py:1061-1065)
+  - **ROOT CAUSE**: `_detect_chase_groups()` was still detecting chase groups during sleep
+  - Fix 6 only skipped rendering but detection still happened, causing chase to continue
+  - Now returns empty dict immediately if current event is "sleep"
+  - Completely prevents multi-group chase coordination from running during sleep
 - **Impact**: Fixed bug where some LEDs stayed on during bored→sleep transition after multi-LED effects (disco, chase, etc.)
 
 ### Changed

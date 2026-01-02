@@ -1058,6 +1058,12 @@ class Lumen:
             Dict mapping group_num to list of group names in that chase group.
             Empty dict if no multi-group chase detected.
         """
+        # v1.5.0 Fix 8: Don't detect chase groups if current event is "sleep"
+        # This prevents chase from continuing to render during sleep state
+        current_event = self.state_detector.get_current_event()
+        if current_event == "sleep":
+            return {}
+
         chase_groups: Dict[int, List[str]] = {}
 
         for group_name, state in self.effect_states.items():
