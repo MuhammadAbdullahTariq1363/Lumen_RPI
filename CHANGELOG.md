@@ -74,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Proxy-connected groups can use full brightness with dedicated power supplies
 - **Updated**: All example configs (ender3_simple.cfg, voron_24.cfg, voron_trident.cfg) with `group_brightness` parameter
 
+#### Off Effect LED Cleanup Bug
+- **Root cause**: Off effect returned single color `[(0,0,0)]` instead of per-LED colors, causing race conditions during state transitions
+- **Fix**: Changed off effect to return per-LED colors `[(0,0,0)] * led_count` (off.py:34)
+- **Impact**: Fixed bug where some LEDs stayed on during bored→sleep transition after multi-LED effects (disco, chase, etc.)
+
 ### Changed
 - Version bumped from v1.4.1 to v1.5.0
 

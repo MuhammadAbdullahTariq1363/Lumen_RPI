@@ -25,5 +25,10 @@ class OffEffect(BaseEffect):
         led_count: int = 1,
         state_data: Optional[dict] = None
     ) -> Tuple[List[Optional[RGB]], bool]:
-        """Return black for all LEDs."""
-        return [(0.0, 0.0, 0.0)], True
+        """Return black for all LEDs.
+
+        v1.5.0 fix: Returns per-LED colors to properly clear all LEDs.
+        Previous implementation returned single color [(0,0,0)] which caused
+        race conditions during state transitions from multi-LED effects.
+        """
+        return [(0.0, 0.0, 0.0)] * led_count, True

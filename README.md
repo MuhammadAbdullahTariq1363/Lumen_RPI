@@ -83,8 +83,10 @@ Edit `~/printer_data/config/lumen.cfg`:
 
 ```ini
 [lumen_settings]
-max_brightness: 0.4        # Global brightness limit (0.0-1.0)
 gpio_fps: 60               # Animation frame rate for GPIO drivers
+temp_floor: 20             # Ambient temperature baseline (°C)
+bored_timeout: 30          # Seconds idle before "bored"
+sleep_timeout: 60          # Seconds bored before "sleep"
 
 [lumen_group chamber_leds]
 driver: proxy              # GPIO via proxy service (recommended, 60fps)
@@ -92,6 +94,7 @@ gpio_pin: 18               # BCM GPIO pin number
 index_start: 1             # First LED in strip
 index_end: 60              # Last LED in strip
 color_order: GRB           # WS2812B = GRB, some strips = RGB
+group_brightness: 0.5      # 0.0-1.0 brightness multiplier for this group
 on_idle: solid white
 on_heating: thermal bed ice lava 2.0
 on_printing: progress steel matrix 1.5
@@ -100,6 +103,12 @@ on_error: heartbeat red
 on_bored: disco
 on_sleep: off
 ```
+
+**Brightness Control (v1.5.0):**
+- Use `group_brightness` per LED group for fine-grained control
+- Flow: Base Color → Effect Brightness → Group Brightness → Final Output
+- Different groups can have different brightness (useful for mixed power supplies)
+- Example: Klipper groups at 0.4 for voltage control, Proxy groups at 1.0 for dedicated PSU
 
 Then restart Moonraker:
 ```bash
@@ -129,6 +138,7 @@ proxy_port: 3769
 index_start: 1
 index_end: 60
 color_order: GRB           # GRB for WS2812B, RGB for some WS2811
+group_brightness: 1.0      # 0.0-1.0 brightness multiplier
 ```
 
 ### Klipper Driver
@@ -150,6 +160,7 @@ driver: klipper
 neopixel: toolhead_leds    # Must match [neopixel] name in printer.cfg
 index_start: 1
 index_end: 6
+group_brightness: 1.0      # 0.0-1.0 brightness multiplier
 ```
 
 ### PWM Driver
