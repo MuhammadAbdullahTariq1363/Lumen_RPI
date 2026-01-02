@@ -78,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Root cause**: Off effect returned single color `[(0,0,0)]` instead of per-LED colors, causing race conditions during state transitions
 - **Fix 1**: Changed off effect to return per-LED colors `[(0,0,0)] * led_count` (off.py:34)
 - **Fix 2**: Added explicit per-LED clearing in immediate effect application using `set_leds()` (lumen.py:931-942)
-- **Fix 3**: Added debug logging to verify LED clearing during state transitions (lumen.py:934, 938, 942)
+- **Fix 3**: Skip animation loop rendering for "off" effect to prevent race condition (lumen.py:1257-1259)
+- **Fix 4**: Added debug logging to verify LED clearing during state transitions (lumen.py:934, 938, 942)
 - **Impact**: Fixed bug where some LEDs stayed on during bored→sleep transition after multi-LED effects (disco, chase, etc.)
 
 ### Changed

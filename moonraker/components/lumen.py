@@ -1254,6 +1254,10 @@ class Lumen:
                     if group_name in coordinated_groups:
                         continue
 
+                    # v1.5.0: Skip rendering for "off" effect - already handled in immediate application
+                    if state.effect == "off":
+                        continue
+
                     # Check if effect exists in registry
                     effect_class = EFFECT_REGISTRY.get(state.effect)
                     if not effect_class:
