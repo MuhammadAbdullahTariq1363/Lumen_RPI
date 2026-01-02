@@ -88,6 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Multi-group chase coordination was continuing to render even after state changed to "off"
   - Now checks all chase groups for "off" effect and skips chase rendering entirely
   - Prevents chase effect from overwriting off commands during bored→sleep transition
+- **Fix 7**: Added delayed cleanup task for sleep state (lumen.py:1020-1047, 833-836)
+  - Waits 2 seconds after sleep event, then sends final off commands to all groups
+  - Ensures LEDs turn off even if there are persistent issues at driver/hardware level
+  - Logs cleanup actions for debugging
 - **Impact**: Fixed bug where some LEDs stayed on during bored→sleep transition after multi-LED effects (disco, chase, etc.)
 
 ### Changed

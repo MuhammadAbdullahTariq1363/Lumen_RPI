@@ -829,6 +829,11 @@ class Lumen:
             await self._apply_effect(group_name, driver, mapping)
 
         await self._ensure_animation_loop()
+
+        # v1.5.0 Fix 7: Schedule additional cleanup task for "sleep" state
+        # This ensures LEDs turn off even if animation loop is still sending updates
+        if event_name == "sleep":
+            asyncio.create_task(self._delayed_sleep_cleanup())
     
     async def _apply_effect(self, group_name: str, driver: LEDDriver, mapping: Dict[str, Any]) -> None:
         """Apply effect to a driver.
@@ -1012,6 +1017,35 @@ class Lumen:
             group_cfg = self.led_groups.get(group_name, {})
             state.direction = group_cfg.get("direction", "standard")
     
+    async def _delayed_sleep_cleanup(self) -> None:
+        """
+        v1.5.0 Fix 7: Delayed cleanup task for sleep state.
+
+        Waits 2 seconds after sleep event, then sends final off commands
+        to all LED groups to ensure they're actually off.
+        """
+        await asyncio.sleep(2.0)
+
+        # Check if we're still in sleep state
+        current_event = self.state_detector.get_current_event()
+        if current_event != "sleep":
+            return  # State changed, abort cleanup
+
+        self._log_debug("Sleep cleanup: sending final off commands to all groups")
+
+        # Send off command to all groups
+        for group_name, driver in self.drivers.items():
+            try:
+                led_count = driver.led_count if hasattr(driver, 'led_count') else 1
+                if hasattr(driver, 'set_leds') and led_count > 1:
+                    await driver.set_leds([(0.0, 0.0, 0.0)] * led_count)
+                    self._log_debug(f"Sleep cleanup: cleared group '{group_name}' ({led_count} LEDs)")
+                else:
+                    await driver.set_off()
+                    self._log_debug(f"Sleep cleanup: cleared group '{group_name}'")
+            except Exception as e:
+                self._log_warning(f"Sleep cleanup failed for group '{group_name}': {e}")
+
     # ─────────────────────────────────────────────────────────────
     # Multi-Group Chase Coordination
     # ─────────────────────────────────────────────────────────────
