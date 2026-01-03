@@ -13,13 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Test Mode - Interactive State/Effect Cycling
 - **Added**: Test mode for debugging LED configurations without waiting for printer state changes
-- **API Endpoints**:
-  - `POST /server/lumen/test/start` - Enter test mode (lumen.py:2095-2129)
-  - `POST /server/lumen/test/stop` - Exit test mode and reload config (lumen.py:2131-2153)
-  - `POST /server/lumen/test/next_state` - Cycle to next printer state (lumen.py:2155-2181)
-  - `POST /server/lumen/test/prev_state` - Cycle to previous printer state (lumen.py:2183-2209)
-  - `POST /server/lumen/test/next_effect?group=GROUP` - Cycle to next effect on specific group (lumen.py:2211-2255)
-  - `POST /server/lumen/test/prev_effect?group=GROUP` - Cycle to previous effect on specific group (lumen.py:2257-2301)
+- **API Endpoints** (flat paths for Klipper macro compatibility):
+  - `POST /server/lumen/test_start` - Enter test mode (lumen.py:2095-2129)
+  - `POST /server/lumen/test_stop` - Exit test mode and reload config (lumen.py:2131-2153)
+  - `POST /server/lumen/test_next_state` - Cycle to next printer state (lumen.py:2155-2181)
+  - `POST /server/lumen/test_prev_state` - Cycle to previous printer state (lumen.py:2183-2209)
+  - `POST /server/lumen/test_next_effect?group=GROUP` - Cycle to next effect on specific group (lumen.py:2211-2255)
+  - `POST /server/lumen/test_prev_effect?group=GROUP` - Cycle to previous effect on specific group (lumen.py:2257-2301)
 - **Macros Added** (examples/lumen_macros.cfg):
   - `LUMEN_TEST_START` - Enter test mode
   - `LUMEN_TEST_STOP` - Exit test mode

@@ -163,13 +163,13 @@ class Lumen:
         # v1.6.5: New API endpoints
         self.server.register_endpoint("/server/lumen/effects", ["GET"], self._handle_effects)
         self.server.register_endpoint("/server/lumen/set_group", ["POST"], self._handle_set_group)
-        # v1.7.0: Test mode endpoints
-        self.server.register_endpoint("/server/lumen/test/start", ["POST"], self._handle_test_start)
-        self.server.register_endpoint("/server/lumen/test/stop", ["POST"], self._handle_test_stop)
-        self.server.register_endpoint("/server/lumen/test/next_state", ["POST"], self._handle_test_next_state)
-        self.server.register_endpoint("/server/lumen/test/prev_state", ["POST"], self._handle_test_prev_state)
-        self.server.register_endpoint("/server/lumen/test/next_effect", ["POST"], self._handle_test_next_effect)
-        self.server.register_endpoint("/server/lumen/test/prev_effect", ["POST"], self._handle_test_prev_effect)
+        # v1.7.0: Test mode endpoints (flat paths for Klipper macro compatibility)
+        self.server.register_endpoint("/server/lumen/test_start", ["POST"], self._handle_test_start)
+        self.server.register_endpoint("/server/lumen/test_stop", ["POST"], self._handle_test_stop)
+        self.server.register_endpoint("/server/lumen/test_next_state", ["POST"], self._handle_test_next_state)
+        self.server.register_endpoint("/server/lumen/test_prev_state", ["POST"], self._handle_test_prev_state)
+        self.server.register_endpoint("/server/lumen/test_next_effect", ["POST"], self._handle_test_next_effect)
+        self.server.register_endpoint("/server/lumen/test_prev_effect", ["POST"], self._handle_test_prev_effect)
         
         # Log initialization
         self._log_info(f"Initialized with {len(self.led_groups)} groups")

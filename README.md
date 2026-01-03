@@ -448,12 +448,12 @@ gradient_curve: 1.5        # Slightly sharper toward 100%
 | `/server/lumen/test_event?event=STATE` | POST | Manually trigger a state (heating, printing, etc) |
 | `/server/lumen/set_group` | POST | Temporarily override group effect (v1.6.5) |
 | `/server/lumen/reload` | POST | Hot reload lumen.cfg without Moonraker restart |
-| `/server/lumen/test/start` | POST | Enter test mode for state/effect debugging (v1.7.0) |
-| `/server/lumen/test/stop` | POST | Exit test mode and reload config (v1.7.0) |
-| `/server/lumen/test/next_state` | POST | Cycle to next printer state in test mode (v1.7.0) |
-| `/server/lumen/test/prev_state` | POST | Cycle to previous printer state in test mode (v1.7.0) |
-| `/server/lumen/test/next_effect?group=GROUP` | POST | Cycle to next effect on specific group (v1.7.0) |
-| `/server/lumen/test/prev_effect?group=GROUP` | POST | Cycle to previous effect on specific group (v1.7.0) |
+| `/server/lumen/test_start` | POST | Enter test mode for state/effect debugging (v1.7.0) |
+| `/server/lumen/test_stop` | POST | Exit test mode and reload config (v1.7.0) |
+| `/server/lumen/test_next_state` | POST | Cycle to next printer state in test mode (v1.7.0) |
+| `/server/lumen/test_prev_state` | POST | Cycle to previous printer state in test mode (v1.7.0) |
+| `/server/lumen/test_next_effect?group=GROUP` | POST | Cycle to next effect on specific group (v1.7.0) |
+| `/server/lumen/test_prev_effect?group=GROUP` | POST | Cycle to previous effect on specific group (v1.7.0) |
 
 **Effects API Response (v1.6.5):**
 ```json
